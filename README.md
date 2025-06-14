@@ -2,12 +2,11 @@
 
 ## Descripción
 
-Este proyecto implementa una API GraphQL para la Base de Datos Nacional de Subvenciones (BDNS) de España, siguiendo un enfoque híbrido que combina una base de datos local con consultas a la API original cuando es necesario. Está diseñado específicamente para analizar patrones de concesión de subvenciones, detectar favoritismo y concentración por tipo de entidad.
+Este proyecto implementa una API GraphQL para la Base de Datos Nacional de Subvenciones (BDNS) de España. Está diseñado específicamente para analizar patrones de concesión de subvenciones, detectar favoritismo y concentración por tipo de entidad.
 
 ## Características principales
 
 - **API GraphQL**: Interfaz flexible para consultas complejas sobre subvenciones
-- **Enfoque híbrido**: Almacenamiento local + consultas a la API original
 - **Optimizado para Oracle Cloud Free Tier**: Diseñado para operar dentro de las limitaciones gratuitas
 - **Análisis de patrones**: Consultas específicas para detectar concentración de subvenciones
 - **Clasificación por NIF**: Identificación automática del tipo de entidad según el NIF
