@@ -4,12 +4,14 @@ from app.db.models import Organo
 from db.enums import TipoOrgano
 from typing import Optional
 
+from app.db.session import SessionLocal
 
 def encontrar_codigo_convocante(
-    session: Session,
     administracion: str,
     departamento: Optional[str] = None,
     organo: Optional[str] = None,
+    session: Optional[Session] = None,
+
 ) -> Optional[str]:
     """Devuelve el ID del órgano convocante según los textos del CSV.
 
@@ -20,8 +22,18 @@ def encontrar_codigo_convocante(
     ``Departamento``.  En ese caso se intenta una búsqueda adicional
     usando ``nombre`` y ``nivel3`` del órgano.
     """
+
+    if session is None:
+        session = SessionLocal()
+        close_session = True
+    else:
+        close_session = False
+
     if not administracion:
-        return None
+        if close_session:
+            session.close()
+
+
 
     query = session.query(Organo.id).filter(
         func.upper(func.trim(Organo.nivel1)) == administracion.strip().upper()
@@ -39,7 +51,10 @@ def encontrar_codigo_convocante(
 
     result = query.first()
     if result:
-        return result[0]
+
+        if close_session:
+            session.close()
+
 
     # Fallback para órganos locales: Administracion = municipio,
     # Departamento = ayuntamiento, sin nivel2 en el CSV.
@@ -51,6 +66,12 @@ def encontrar_codigo_convocante(
         )
         local_result = local_query.first()
         if local_result:
+
+            if close_session:
+                session.close()
             return local_result[0]
 
-    return None
+    if close_session:
+        session.close()
+
+      
