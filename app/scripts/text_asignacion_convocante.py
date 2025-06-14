@@ -39,8 +39,19 @@ def preprocess_line(line: str) -> list[str]:
     line = line.replace("\"\"", "\"")
     return next(csv.reader([line], delimiter=",", quotechar="\""))
 
-def procesar_archivo(ruta: Path, tipo_desc: str, session: Session) -> None:
-    """Procesa un archivo CSV mostrando la asignación de órganos."""
+def procesar_archivo(
+    ruta: Path, tipo_desc: str, session: Session | None = None
+) -> None:
+    """Procesa un archivo CSV mostrando la asignación de órganos.
+
+    Si no se proporciona una sesión se crea automáticamente usando
+    :class:`SessionLocal` de :mod:`app.db.session`.
+    """
+    close_session = False
+    if session is None:
+        session = SessionLocal()
+        close_session = True
+
     with ruta.open(encoding="latin-1") as f:
         _ = preprocess_line(f.readline())  # descartar cabecera
         for linea in f:
@@ -74,6 +85,8 @@ def procesar_archivo(ruta: Path, tipo_desc: str, session: Session) -> None:
                 organo,
                 org_desc,
             )
+    if close_session:
+        session.close()
 
 
 def main():
