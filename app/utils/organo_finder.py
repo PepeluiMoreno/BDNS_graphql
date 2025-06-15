@@ -5,6 +5,7 @@ from db.enums import TipoOrgano
 from typing import Optional
 
 from app.db.session import SessionLocal
+from app.scripts.poblar_organos import normalizar_texto
 
 def encontrar_codigo_convocante(
     administracion: str,
@@ -35,41 +36,28 @@ def encontrar_codigo_convocante(
 
 
 
-    query = session.query(Organo.id).filter(
-        func.upper(func.trim(Organo.nivel1)) == administracion.strip().upper()
-    )
-
-    if departamento:
-        query = query.filter(
-            func.upper(func.trim(Organo.nivel2)) == departamento.strip().upper()
-        )
-
-    if organo:
-        query = query.filter(
-            func.upper(func.trim(Organo.nivel3)) == organo.strip().upper()
-        )
-
-    result = query.first()
-    if result:
-
+    candidatos = session.query(Organo).all()
+    for cand in candidatos:
+        if normalizar_texto(cand.nivel1) != normalizar_texto(administracion):
+            continue
+        if departamento and normalizar_texto(cand.nivel2) != normalizar_texto(departamento):
+            continue
+        if organo and normalizar_texto(cand.nivel3) != normalizar_texto(organo):
+            continue
         if close_session:
             session.close()
+        return cand.id
 
 
     # Fallback para órganos locales: Administracion = municipio,
     # Departamento = ayuntamiento, sin nivel2 en el CSV.
     if departamento:
-        local_query = session.query(Organo.id).filter(
-            func.upper(func.trim(Organo.nombre)) == departamento.strip().upper(),
-            func.upper(func.trim(Organo.nivel3)) == administracion.strip().upper(),
-            Organo.tipo == TipoOrgano.LOCAL,
-        )
-        local_result = local_query.first()
-        if local_result:
-
-            if close_session:
-                session.close()
-            return local_result[0]
+        for cand in session.query(Organo).filter(Organo.tipo == TipoOrgano.LOCAL).all():
+            if normalizar_texto(cand.nombre) == normalizar_texto(departamento) and \
+               normalizar_texto(cand.nivel3) == normalizar_texto(administracion):
+                if close_session:
+                    session.close()
+                return cand.id
 
     if close_session:
         session.close()
