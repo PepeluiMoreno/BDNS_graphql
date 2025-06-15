@@ -106,6 +106,7 @@ def encontrar_codigo_convocante(
                 if close_session:
                     session.close()
 
+                return cand.id
 
     if close_session:
         session.close()
