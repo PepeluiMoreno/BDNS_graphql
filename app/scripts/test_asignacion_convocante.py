@@ -10,7 +10,6 @@ import glob
 import logging
 from pathlib import Path
 from datetime import datetime
-from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
 from app.db.models import Organo
@@ -78,55 +77,45 @@ def test_busqueda_sin_acentos() -> None:
         assert con_acentos == sin_acentos
         print("Prueba sin acentos superada para", con_acentos)
 
-def procesar_archivo(
-    ruta: Path, tipo_desc: str, session: Session | None = None
-) -> None:
+def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
     """Procesa un archivo CSV mostrando la asignación de órganos.
 
-    Si no se proporciona una sesión se crea automáticamente usando
-    :class:`SessionLocal` de :mod:`app.db.session`.
+    Abre su propia sesión de base de datos usando :class:`SessionLocal`.
     """
-    close_session = False
-    if session is None:
-        session = SessionLocal()
-        close_session = True
+    with SessionLocal() as session:
+        with ruta.open(encoding="latin-1") as f:
+            _ = preprocess_line(f.readline())  # descartar cabecera
+            for linea in f:
+                if not linea.strip():
+                    continue
+                fila = preprocess_line(linea)
+                if len(fila) < 5:
+                    continue
+                codigo = fila[0].strip()
+                administracion = fila[2].strip()
+                departamento = fila[3].strip()
+                organo = fila[4].strip()
 
-    with ruta.open(encoding="latin-1") as f:
-        _ = preprocess_line(f.readline())  # descartar cabecera
-        for linea in f:
-            if not linea.strip():
-                continue
-            fila = preprocess_line(linea)
-            if len(fila) < 5:
-                continue
-            codigo = fila[0].strip()
-            administracion = fila[2].strip()
-            departamento = fila[3].strip()
-            organo = fila[4].strip()
+                org_id = encontrar_codigo_convocante(
+                    administracion, departamento, organo
+                )
+                datos_organo = None
+                if org_id:
+                    datos_organo = session.get(Organo, org_id)
+                if datos_organo:
+                    org_desc = f"{datos_organo.nombre} [{datos_organo.id}]"
+                else:
+                    org_desc = "No encontrado"
 
-            org_id = encontrar_codigo_convocante(
-                administracion, departamento, organo, session=session
-            )
-            datos_organo = None
-            if org_id:
-                datos_organo = session.get(Organo, org_id)
-            if datos_organo:
-                org_desc = f"{datos_organo.nombre} [{datos_organo.id}]"
-            else:
-                org_desc = "No encontrado"
-
-
-            logger.info(
-                "Convocatoria %s (%s) -> %s - %s - %s | Órgano: %s",
-                codigo,
-                tipo_desc,
-                administracion,
-                departamento,
-                organo,
-                org_desc,
-            )
-    if close_session:
-        session.close()
+                logger.info(
+                    "Convocatoria %s (%s) -> %s - %s - %s | Órgano: %s",
+                    codigo,
+                    tipo_desc,
+                    administracion,
+                    departamento,
+                    organo,
+                    org_desc,
+                )
 
 def main():
     parser = argparse.ArgumentParser(description="Generar log de convocantes")
@@ -150,11 +139,10 @@ def main():
         )
         return
 
-    with SessionLocal() as session:
-        for archivo in archivos:
-            prefijo = Path(archivo).stem.split("_")[1]
-            tipo_desc = TIPOS.get(prefijo, "Desconocido")
-            procesar_archivo(Path(archivo), tipo_desc, session)
+    for archivo in archivos:
+        prefijo = Path(archivo).stem.split("_")[1]
+        tipo_desc = TIPOS.get(prefijo, "Desconocido")
+        procesar_archivo(Path(archivo), tipo_desc)
 
 
 if __name__ == "__main__":
