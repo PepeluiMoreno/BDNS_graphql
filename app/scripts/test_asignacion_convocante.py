@@ -75,8 +75,7 @@ def procesar_archivo(
             else:
                 org_desc = "No encontrado"
 
-            # Keep the format string and arguments aligned.
-            # There are six %s placeholders with six corresponding values.
+
             logging.info(
                 "Convocatoria %s (%s) -> %s - %s - %s | Órgano: %s",
                 codigo,
