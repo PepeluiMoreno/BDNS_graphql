@@ -75,6 +75,7 @@ def procesar_archivo(
             else:
                 org_desc = "No encontrado"
 
+
             logging.info(
                 "Convocatoria %s (%s) -> %s - %s - %s | Órgano: %s",
                 codigo,
