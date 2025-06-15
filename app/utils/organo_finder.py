@@ -54,7 +54,7 @@ def encontrar_codigo_convocante(
 
         if close_session:
             session.close()
-
+        return result[0]
 
     # Fallback para órganos locales: Administracion = municipio,
     # Departamento = ayuntamiento, sin nivel2 en el CSV.
@@ -73,5 +73,7 @@ def encontrar_codigo_convocante(
 
     if close_session:
         session.close()
+
+    return None
 
       
