@@ -2,13 +2,18 @@
 """Genera un log con el tipo de convocatoria y su órgano convocante.
 
 Uso:
-    python -m app.scripts.text_asignacion_convocante 2018
+    python -m app.scripts.test_asignacion_convocante 2018
 """
 import argparse
 import csv
 import glob
 import logging
 from pathlib import Path
+from sqlalchemy.orm import Session
+
+from app.db.session import SessionLocal
+from app.db.models import Organo
+from app.utils.organo_finder import encontrar_codigo_convocante
 
 CSV_DIR = Path(__file__).resolve().parent.parent / "csv" / "convocatorias"
 TIPOS = {
@@ -33,7 +38,19 @@ def preprocess_line(line: str) -> list[str]:
     line = line.replace("\"\"", "\"")
     return next(csv.reader([line], delimiter=",", quotechar="\""))
 
-def procesar_archivo(ruta: Path, tipo_desc: str):
+def procesar_archivo(
+    ruta: Path, tipo_desc: str, session: Session | None = None
+) -> None:
+    """Procesa un archivo CSV mostrando la asignación de órganos.
+
+    Si no se proporciona una sesión se crea automáticamente usando
+    :class:`SessionLocal` de :mod:`app.db.session`.
+    """
+    close_session = False
+    if session is None:
+        session = SessionLocal()
+        close_session = True
+
     with ruta.open(encoding="latin-1") as f:
         _ = preprocess_line(f.readline())  # descartar cabecera
         for linea in f:
@@ -46,14 +63,31 @@ def procesar_archivo(ruta: Path, tipo_desc: str):
             administracion = fila[2].strip()
             departamento = fila[3].strip()
             organo = fila[4].strip()
+
+            org_id = encontrar_codigo_convocante(
+                administracion, departamento, organo, session=session
+            )
+            datos_organo = None
+            if org_id:
+                datos_organo = session.get(Organo, org_id)
+            if datos_organo:
+                org_desc = f"{datos_organo.nombre} [{datos_organo.id}]"
+            else:
+                org_desc = "No encontrado"
+
+            # Keep the format string and arguments aligned.
+            # There are six %s placeholders with six corresponding values.
             logging.info(
-                "La convocatoria %s es una convocatoria %s de %s - %s-%s",
+                "Convocatoria %s (%s) -> %s - %s - %s | Órgano: %s",
                 codigo,
                 tipo_desc,
                 administracion,
                 departamento,
                 organo,
+                org_desc,
             )
+    if close_session:
+        session.close()
 
 def main():
     parser = argparse.ArgumentParser(description="Generar log de convocantes")
@@ -67,10 +101,12 @@ def main():
     if not archivos:
         logging.warning("No se encontraron archivos para el ejercicio %s", args.ejercicio)
         return
-    for archivo in archivos:
-        prefijo = Path(archivo).stem.split("_")[1]
-        tipo_desc = TIPOS.get(prefijo, "Desconocido")
-        procesar_archivo(Path(archivo), tipo_desc)
+
+    with SessionLocal() as session:
+        for archivo in archivos:
+            prefijo = Path(archivo).stem.split("_")[1]
+            tipo_desc = TIPOS.get(prefijo, "Desconocido")
+            procesar_archivo(Path(archivo), tipo_desc, session)
 
 
 if __name__ == "__main__":
