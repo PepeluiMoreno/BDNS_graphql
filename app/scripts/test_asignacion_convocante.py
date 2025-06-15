@@ -14,7 +14,10 @@ from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
 from app.db.models import Organo
-from app.utils.organo_finder import encontrar_codigo_convocante
+from app.utils.organo_finder import (
+    encontrar_codigo_convocante,
+    normalize_text,
+)
 
 CSV_DIR = Path(__file__).resolve().parent.parent / "csv" / "convocatorias"
 TIPOS = {
@@ -51,6 +54,29 @@ def preprocess_line(line: str) -> list[str]:
         line = line[1:-1]
     line = line.replace("\"\"", "\"")
     return next(csv.reader([line], delimiter=",", quotechar="\""))
+
+
+def test_busqueda_sin_acentos() -> None:
+    """Comprueba que las búsquedas sin acentos devuelven el mismo órgano."""
+    with SessionLocal() as session:
+        registro = session.query(Organo).filter(Organo.nivel1.isnot(None)).first()
+        if registro is None:
+            print("No hay datos disponibles para la prueba")
+            return
+
+        admin = registro.nivel1 or ""
+        dep = registro.nivel2 or ""
+        org = registro.nivel3 or ""
+
+        con_acentos = encontrar_codigo_convocante(admin, dep, org, session=session)
+        sin_acentos = encontrar_codigo_convocante(
+            normalize_text(admin),
+            normalize_text(dep) if dep else None,
+            normalize_text(org) if org else None,
+            session=session,
+        )
+        assert con_acentos == sin_acentos
+        print("Prueba sin acentos superada para", con_acentos)
 
 def procesar_archivo(
     ruta: Path, tipo_desc: str, session: Session | None = None
@@ -105,8 +131,16 @@ def procesar_archivo(
 def main():
     parser = argparse.ArgumentParser(description="Generar log de convocantes")
     parser.add_argument("ejercicio", type=int, help="Año de las convocatorias")
+    parser.add_argument(
+        "--selftest",
+        action="store_true",
+        help="Ejecutar prueba de búsqueda sin acentos",
+    )
     args = parser.parse_args()
 
+    if args.selftest:
+        test_busqueda_sin_acentos()
+        return
 
     patron = str(CSV_DIR / f"convocatorias_*_{args.ejercicio}.csv")
     archivos = sorted(glob.glob(patron))
