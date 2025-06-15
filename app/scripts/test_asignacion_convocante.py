@@ -9,6 +9,7 @@ import csv
 import glob
 import logging
 from pathlib import Path
+from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
@@ -22,6 +23,19 @@ TIPOS = {
     "L": "LOCAL",
     "O": "Otras Administraciones",
 }
+
+# Configuración de logging similar a ``apply_migrations.py``
+LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+LOG_FILE = LOG_DIR / f"test_asignacion_convocante_{timestamp}.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()],
+)
+logger = logging.getLogger("test_asignacion_convocante")
 
 def preprocess_line(line: str) -> list[str]:
     """Convierte una línea en una lista de campos.
@@ -76,7 +90,7 @@ def procesar_archivo(
                 org_desc = "No encontrado"
 
 
-            logging.info(
+            logger.info(
                 "Convocatoria %s (%s) -> %s - %s - %s | Órgano: %s",
                 codigo,
                 tipo_desc,
@@ -93,12 +107,13 @@ def main():
     parser.add_argument("ejercicio", type=int, help="Año de las convocatorias")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     patron = str(CSV_DIR / f"convocatorias_*_{args.ejercicio}.csv")
     archivos = sorted(glob.glob(patron))
     if not archivos:
-        logging.warning("No se encontraron archivos para el ejercicio %s", args.ejercicio)
+        logger.warning(
+            "No se encontraron archivos para el ejercicio %s", args.ejercicio
+        )
         return
 
     with SessionLocal() as session:
