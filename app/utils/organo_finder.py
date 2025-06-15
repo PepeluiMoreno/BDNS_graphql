@@ -6,6 +6,7 @@ from typing import Optional
 import unicodedata
 
 from app.db.session import SessionLocal
+from app.scripts.poblar_organos import normalizar_texto
 
 
 def normalize_text(text: str) -> str:
@@ -48,6 +49,7 @@ def encontrar_codigo_convocante(
 
     adm_norm = normalize_text(administracion).strip()
 
+
     query = session.query(Organo.id).filter(
         func.upper(func.unaccent(func.trim(Organo.nivel1))) == adm_norm
     )
@@ -70,10 +72,24 @@ def encontrar_codigo_convocante(
             session.close()
         return result[0]
 
+    candidatos = session.query(Organo).all()
+    for cand in candidatos:
+        if normalizar_texto(cand.nivel1) != normalizar_texto(administracion):
+            continue
+        if departamento and normalizar_texto(cand.nivel2) != normalizar_texto(departamento):
+            continue
+        if organo and normalizar_texto(cand.nivel3) != normalizar_texto(organo):
+            continue
+        if close_session:
+            session.close()
+        return cand.id
+
+
 
     # Fallback para órganos locales: Administracion = municipio,
     # Departamento = ayuntamiento, sin nivel2 en el CSV.
     if departamento:
+
         dep_norm = normalize_text(departamento).strip()
         local_query = session.query(Organo.id).filter(
             func.upper(func.unaccent(func.trim(Organo.nombre))) == dep_norm,
@@ -85,6 +101,13 @@ def encontrar_codigo_convocante(
             if close_session:
                 session.close()
             return local_result[0]
+
+        for cand in session.query(Organo).filter(Organo.tipo == TipoOrgano.LOCAL).all():
+            if normalizar_texto(cand.nombre) == normalizar_texto(departamento) and \
+               normalizar_texto(cand.nivel3) == normalizar_texto(administracion):
+                if close_session:
+                    session.close()
+
 
     if close_session:
         session.close()
