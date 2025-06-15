@@ -69,7 +69,7 @@ def descargar_csv(tipo_admin: str, anio: int) -> list[dict]:
             filas = []
             for fila in lector:
                 fila_limpia = {
-                    clave.strip(): valor.strip('"').strip("'").strip() if isinstance(valor, str) else valor
+                    clave.strip(): valor.replace('"', '').replace("'", '').strip() if isinstance(valor, str) else valor
                     for clave, valor in fila.items()
                 }
                 filas.append(fila_limpia)
