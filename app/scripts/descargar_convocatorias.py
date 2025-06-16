@@ -8,7 +8,7 @@ from pathlib import Path
 
 URL_BASE = "https://www.infosubvenciones.es/bdnstrans/api"
 RUTA_LOGS = Path("logs")
-RUTA_DESCARGAS = Path("csv/convocatorias")
+RUTA_DESCARGAS = Path(__file__).resolve().parents[1] / "csv" / "convocatorias"
 RUTA_LOGS.mkdir(parents=True, exist_ok=True)
 RUTA_DESCARGAS.mkdir(parents=True, exist_ok=True)
 PRIMER_EJERCICIO = 2008
