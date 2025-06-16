@@ -2,3 +2,6 @@ venv/
 logs/
 .vcode/
 .env
+.pyc
+__pycache__/
+csv/
