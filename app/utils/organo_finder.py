@@ -3,21 +3,9 @@ from sqlalchemy import func
 from app.db.models import Organo
 from db.enums import TipoOrgano
 from typing import Optional
-import unicodedata
 
 from app.db.session import SessionLocal
 from app.scripts.poblar_organos import normalizar_texto
-
-
-def normalize_text(text: str) -> str:
-    """Return text without accents and in uppercase."""
-    if not text:
-        return ""
-    normalized = unicodedata.normalize("NFKD", text)
-    without_accents = "".join(
-        c for c in normalized if not unicodedata.combining(c)
-    )
-    return without_accents.upper()
 
 def encontrar_codigo_convocante(
     administracion: str,
@@ -47,7 +35,7 @@ def encontrar_codigo_convocante(
             session.close()
         return None
 
-    adm_norm = normalize_text(administracion).strip()
+    adm_norm = normalizar_texto(administracion)
 
 
     query = session.query(Organo.id).filter(
@@ -55,13 +43,13 @@ def encontrar_codigo_convocante(
     )
 
     if departamento:
-        dep_norm = normalize_text(departamento).strip()
+        dep_norm = normalizar_texto(departamento)
         query = query.filter(
             func.upper(func.unaccent(func.trim(Organo.nivel2))) == dep_norm
         )
 
     if organo:
-        org_norm = normalize_text(organo).strip()
+        org_norm = normalizar_texto(organo)
         query = query.filter(
             func.upper(func.unaccent(func.trim(Organo.nivel3))) == org_norm
         )
@@ -90,7 +78,7 @@ def encontrar_codigo_convocante(
     # Departamento = ayuntamiento, sin nivel2 en el CSV.
     if departamento:
 
-        dep_norm = normalize_text(departamento).strip()
+        dep_norm = normalizar_texto(departamento)
         local_query = session.query(Organo.id).filter(
             func.upper(func.unaccent(func.trim(Organo.nombre))) == dep_norm,
             func.upper(func.unaccent(func.trim(Organo.nivel3))) == adm_norm,
@@ -108,6 +96,7 @@ def encontrar_codigo_convocante(
                 if close_session:
                     session.close()
 
+                return cand.id
 
     if close_session:
         session.close()
