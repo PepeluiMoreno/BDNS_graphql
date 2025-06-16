@@ -1,4 +1,5 @@
 import csv
+import io
 import os
 import requests
 import time
@@ -65,19 +66,17 @@ def descargar_csv(tipo_admin: str, anio: int) -> list[dict]:
                 logging.warning(f"Contenido vacío o no válido para {tipo_admin}-{anio} página {page}")
                 break
 
-            lector = csv.DictReader(texto.splitlines(), delimiter=";")
+            # El CSV descargado usa comas como separador. Lo analizamos con el
+            # módulo ``csv`` para conservar las comas que aparezcan dentro de
+            # literales entrecomillados y, tras cargarlo, escribiremos el
+            # resultado usando punto y coma.
+            lector = csv.DictReader(io.StringIO(texto), delimiter=",")
             filas = []
             for fila in lector:
                 fila_limpia = {
-                    clave.strip(): valor.strip('"').strip("'").strip() if isinstance(valor, str) else valor
+                    clave.strip(): valor.replace('"', '').replace("'", '').strip() if isinstance(valor, str) else valor
                     for clave, valor in fila.items()
                 }
-                # Detectar y mover columna MRR al final con nuevo nombre
-                claves = list(fila_limpia.keys())
-                for k in claves:
-                    if "Recuperación" in k or "MRR" in k:
-                        fila_limpia["mmr"] = fila_limpia.pop(k)
-                        break
                 filas.append(fila_limpia)
 
             if not filas:
@@ -103,11 +102,15 @@ def guardar_csv(filas: list[dict], tipo_admin: str, anio: int):
     archivo = RUTA_DESCARGAS / f"convocatorias_{tipo_admin}_{anio}.csv"
 
     campos = list(filas[0].keys())
-    if 'mmr' in campos:
-        campos = [c for c in campos if c != 'mmr'] + ['mmr']
 
-    with open(archivo, "w", newline="", encoding="utf-8-sig") as f:
-        escritor = csv.DictWriter(f, fieldnames=campos, delimiter=";")
+    with open(archivo, "w", newline="", encoding="utf-8") as f:
+        escritor = csv.DictWriter(
+            f,
+            fieldnames=campos,
+            delimiter=";",
+            quoting=csv.QUOTE_NONE,
+            escapechar="\\",
+        )
         escritor.writeheader()
         escritor.writerows(filas)
 

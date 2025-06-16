@@ -1,6 +1,14 @@
 from sqlalchemy import (
-    Column, Integer, String, Float, Date, Boolean, Text, Enum as SQLEnum, ForeignKey,
- 
+    Column,
+    Integer,
+    String,
+    Float,
+    Date,
+    Boolean,
+    Text,
+    Enum as SQLEnum,
+    ForeignKey,
+    Index,
 )
 from sqlalchemy.orm import relationship, foreign, declarative_base
 from sqlalchemy.dialects.postgresql import JSONB
@@ -63,6 +71,10 @@ class Organo(Base):
     nivel3   = Column(String, nullable=True)
 
     padre = relationship("Organo", remote_side=[id], backref="hijos")
+
+    __table_args__ = (
+        Index("ix_organo_nivel1_nivel2_nivel3", "nivel1", "nivel2", "nivel3"),
+    )
  
 
 ##################################################################
