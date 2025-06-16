@@ -23,12 +23,6 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-from scripts.poblar_organos import normalizar_texto
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
-
 CSV_DIR = Path(__file__).resolve().parent.parent / "csv" / "convocatorias"
 TIPOS = {
     "A": "AUTONOMICA",
@@ -46,10 +40,7 @@ LOG_FILE = LOG_DIR / f"test_asignacion_convocante_{timestamp}.log"
 logger = logging.getLogger("test_asignacion_convocante")
 logger.setLevel(logging.INFO)
 
-
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-
-
 
 file_handler = logging.FileHandler(LOG_FILE)
 file_handler.setLevel(logging.INFO)
@@ -136,7 +127,6 @@ def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
                 log_func(
                     "Convocatoria %s (%s) - Búsqueda del órgano con "
                     "nivel1:%s, nivel2:%s, nivel3:%s -> %s",
-
                     codigo,
                     tipo_desc,
                     administracion,
