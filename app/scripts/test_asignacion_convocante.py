@@ -16,8 +16,12 @@ from db.session import SessionLocal
 from db.models import Organo
 from utils.organo_finder import (
     encontrar_codigo_convocante,
-    normalize_text,
 )
+from app.scripts.poblar_organos import normalizar_texto
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -37,12 +41,24 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 LOG_FILE = LOG_DIR / f"test_asignacion_convocante_{timestamp}.log"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()],
-)
 logger = logging.getLogger("test_asignacion_convocante")
+logger.setLevel(logging.INFO)
+
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+file_handler = logging.FileHandler(LOG_FILE)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.WARNING)
+console_handler.setFormatter(formatter)
+
+if not logger.hasHandlers():
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
 
 def preprocess_line(line: str) -> list[str]:
     """Convierte una línea en una lista de campos.
@@ -74,9 +90,9 @@ def test_busqueda_sin_acentos() -> None:
 
         con_acentos = encontrar_codigo_convocante(admin, dep, org, session=session)
         sin_acentos = encontrar_codigo_convocante(
-            normalize_text(admin),
-            normalize_text(dep) if dep else None,
-            normalize_text(org) if org else None,
+            normalizar_texto(admin),
+            normalizar_texto(dep) if dep else None,
+            normalizar_texto(org) if org else None,
             session=session,
         )
         assert con_acentos == sin_acentos
@@ -104,6 +120,18 @@ def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
                 org_id = encontrar_codigo_convocante(
                     administracion, departamento, organo
                 )
+
+                datos_organo = session.get(Organo, org_id) if org_id else None
+
+                if datos_organo:
+                    org_desc = f"{datos_organo.nombre} [{datos_organo.id}]"
+                    log_func = logger.info
+                else:
+                    org_desc = "No encontrado"
+                    log_func = logger.warning
+
+                log_func(
+
                 datos_organo = None
                 if org_id:
                     datos_organo = session.get(Organo, org_id)
@@ -113,6 +141,7 @@ def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
                     org_desc = "No encontrado"
 
                 logger.info(
+
                     "Convocatoria %s (%s) -> %s - %s - %s | Órgano: %s",
                     codigo,
                     tipo_desc,
