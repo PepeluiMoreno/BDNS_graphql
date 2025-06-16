@@ -17,11 +17,8 @@ from db.models import Organo
 from utils.organo_finder import (
     encontrar_codigo_convocante,
 )
-from scripts.poblar_organos import normalizar_texto
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+from scripts.poblar_organos import normalizar_texto
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -44,9 +41,10 @@ LOG_FILE = LOG_DIR / f"test_asignacion_convocante_{timestamp}.log"
 logger = logging.getLogger("test_asignacion_convocante")
 logger.setLevel(logging.INFO)
 
-formatter = logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+
 
 file_handler = logging.FileHandler(LOG_FILE)
 file_handler.setLevel(logging.INFO)
@@ -70,10 +68,10 @@ def preprocess_line(line: str) -> list[str]:
     line = line.strip()
     if not line:
         return []
-    if line.startswith("\"") and line.endswith("\""):
+    if line.startswith('"') and line.endswith('"'):
         line = line[1:-1]
-    line = line.replace("\"\"", "\"")
-    return next(csv.reader([line], delimiter=",", quotechar="\""))
+    line = line.replace('""', '"')
+    return next(csv.reader([line], delimiter=",", quotechar='"'))
 
 
 def test_busqueda_sin_acentos() -> None:
@@ -130,14 +128,11 @@ def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
                     log_func = logger.warning
 
                 log_func(
-                    "Convocatoria %s (%s) -> %s - %s - %s | Órgano: %s",
-                    codigo,
-                    tipo_desc,
-                    administracion,
-                    departamento,
-                    organo,
-                    org_desc,
+                    "Convocatoria %s (%s) - Búsqueda del órgano con "
+                    "nivel1:%s, nivel2:%s, nivel3:%s -> %s",
+
                 )
+
 
 def main():
     parser = argparse.ArgumentParser(description="Generar log de convocantes")
