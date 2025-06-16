@@ -67,7 +67,18 @@ def descargar_csv(tipo_admin: str, anio: int) -> list[dict]:
 
             # Convertir la descarga separada por comas a datos estructurados.
             # ``csv`` gestiona las comillas de los textos con comas internas.
-            lector = csv.DictReader(texto.splitlines(), delimiter=",", quotechar='"')
+
+            # Algunos ficheros pueden venir ya con punto y coma, por lo que se
+            # detecta el separador automáticamente para evitar fallos en la
+            # paginación.
+            primera_linea = texto.splitlines()[0]
+            try:
+                dialecto = csv.Sniffer().sniff(primera_linea)
+                separador = dialecto.delimiter
+            except Exception:
+                separador = ","
+            lector = csv.DictReader(texto.splitlines(), delimiter=separador, quotechar='"')
+
             filas = []
             for fila in lector:
                 fila_limpia = {

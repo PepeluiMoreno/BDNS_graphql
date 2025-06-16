@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+
 from db.models import Organo
 from db.enums import TipoOrgano
 
@@ -54,6 +55,7 @@ def encontrar_codigo_convocante(
         )
 
     result = query.first()
+
     if close_session:
         session.close()
 

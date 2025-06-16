@@ -93,6 +93,7 @@ def test_busqueda_sin_acentos() -> None:
         assert con_acentos == sin_acentos
         print("Prueba sin acentos superada para", con_acentos)
 
+ 
 def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
     """Procesa un archivo CSV mostrando la asignación de órganos.
 
