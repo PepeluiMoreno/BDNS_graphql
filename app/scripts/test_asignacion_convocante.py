@@ -2,7 +2,7 @@
 """Genera un log con el tipo de convocatoria y su órgano convocante.
 
 Uso:
-    python -m app.scripts.test_asignacion_convocante 2018
+    python -m scripts.test_asignacion_convocante 2018
 """
 import argparse
 import csv
@@ -12,12 +12,18 @@ from pathlib import Path
 from datetime import datetime
 import sys
 
-from app.db.session import SessionLocal
-from app.db.models import Organo
-from app.utils.organo_finder import (
+from db.session import SessionLocal
+from db.models import Organo
+from utils.organo_finder import (
     encontrar_codigo_convocante,
 )
 from app.scripts.poblar_organos import normalizar_texto
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
+from scripts.poblar_organos import normalizar_texto
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -40,7 +46,10 @@ LOG_FILE = LOG_DIR / f"test_asignacion_convocante_{timestamp}.log"
 logger = logging.getLogger("test_asignacion_convocante")
 logger.setLevel(logging.INFO)
 
+
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+
 
 file_handler = logging.FileHandler(LOG_FILE)
 file_handler.setLevel(logging.INFO)
@@ -93,7 +102,6 @@ def test_busqueda_sin_acentos() -> None:
         assert con_acentos == sin_acentos
         print("Prueba sin acentos superada para", con_acentos)
 
-
 def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
     """Procesa un archivo CSV mostrando la asignación de órganos.
 
@@ -128,6 +136,7 @@ def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
                 log_func(
                     "Convocatoria %s (%s) - Búsqueda del órgano con "
                     "nivel1:%s, nivel2:%s, nivel3:%s -> %s",
+
                     codigo,
                     tipo_desc,
                     administracion,
