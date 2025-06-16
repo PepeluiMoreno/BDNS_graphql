@@ -17,6 +17,11 @@ from db.models import Organo
 from utils.organo_finder import (
     encontrar_codigo_convocante,
 )
+from app.scripts.poblar_organos import normalizar_texto
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 from scripts.poblar_organos import normalizar_texto
 
@@ -57,6 +62,7 @@ console_handler.setFormatter(formatter)
 if not logger.hasHandlers():
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+
 
 def preprocess_line(line: str) -> list[str]:
     """Convierte una línea en una lista de campos.
@@ -131,6 +137,12 @@ def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
                     "Convocatoria %s (%s) - Búsqueda del órgano con "
                     "nivel1:%s, nivel2:%s, nivel3:%s -> %s",
 
+                    codigo,
+                    tipo_desc,
+                    administracion,
+                    departamento,
+                    organo,
+                    org_desc,
                 )
 
 

@@ -4,10 +4,8 @@ from db.models import Organo
 from db.enums import TipoOrgano
 from typing import Optional
 
-
 from app.db.session import SessionLocal
 from app.scripts.poblar_organos import normalizar_texto
-
 
 def encontrar_codigo_convocante(
     administracion: str,
