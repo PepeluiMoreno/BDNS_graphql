@@ -45,11 +45,12 @@ if not logger.hasHandlers():
 # Normalización de nombres
 # ─────────────────────────────────────────────────────────────
 
-def normalizar_nombre(nombre: str) -> str:
-    if not nombre:
+def normalizar_texto(texto: str) -> str:
+    """Devuelve una versión en mayúsculas y sin acentos del texto."""
+    if not texto:
         return ""
-    nombre = unicodedata.normalize("NFKD", nombre).encode("ASCII", "ignore").decode("ASCII")
-    return ' '.join(nombre.upper().strip().split())
+    texto = unicodedata.normalize("NFKD", texto).encode("ASCII", "ignore").decode("ASCII")
+    return " ".join(texto.upper().strip().split())
 
 # ─────────────────────────────────────────────────────────────
 # Datos base y constantes
@@ -93,8 +94,7 @@ def generar_id_unico(session, id_base):
     return nuevo_id
 
 def insertar_organo(organo_dict):
-    organo_dict['nombre'] = normalizar_nombre(organo_dict['nombre'])
-
+    
     id_ = organo_dict['id']
     existente = session.query(Organo).filter(Organo.id == id_).one_or_none()
 
@@ -151,17 +151,19 @@ def procesar_autonomicas():
     comunidades = resp.json()
     #En el primer nivel estan las comunidades autónomas, y en el segundo nivel los órganos autonómicos
     for comunidad in comunidades:
-        comunidad_id = formar_id(TipoOrgano.GEOGRAFICO,(comunidad['id']))
-        comunidad_nombre = normalizar_nombre(comunidad['descripcion'])
+        comunidad_id = formar_id(TipoOrgano.GEOGRAFICO, (comunidad['id']))
+        comunidad_nombre = comunidad['descripcion']
         comunidad_id_padre = 'G0'  # ID del nodo raíz geográfico
-        insertar_geografico(comunidad['id'], comunidad_id_padre, comunidad_nombre)  
-        logger.info(f"Insertada la comunidad autónoma: {comunidad_nombre} (ID: {comunidad_id})")  
+        insertar_geografico(comunidad['id'], comunidad_id_padre, comunidad_nombre)
+        logger.info(
+            f"Insertada la comunidad autónoma: {comunidad_nombre} (ID: {comunidad_id})"
+        )
         
         # En el segundo nivel, insertamos los órganos autonómicos
         logger.info (f"Insertando los órganos autonómicos de {comunidad_nombre} (ID: {comunidad_id})")
         for hijo in comunidad.get("children", []):
             hijo_id = formar_id(TipoOrgano.AUTONOMICO, hijo['id'])
-            hijo_nombre = normalizar_nombre(hijo['descripcion'])
+            hijo_nombre = hijo['descripcion']
             insertar_organo({
                 'id': hijo_id,
                 'nombre': hijo['descripcion'],
@@ -182,7 +184,7 @@ def procesar_estado():
     
     for ministerio in ministerios:
         min_id = formar_id(TipoOrgano.CENTRAL, ministerio['id'])
-        min_nombre = normalizar_nombre(ministerio['descripcion'])
+        min_nombre = ministerio['descripcion']
         insertar_organo({
             'id': min_id,
             'nombre': min_nombre,
@@ -194,7 +196,7 @@ def procesar_estado():
         })
         for hijo in ministerio.get("children", []):
             hijo_id = formar_id(TipoOrgano.CENTRAL, hijo['id'])
-            hijo_nombre = normalizar_nombre(hijo['descripcion'])
+            hijo_nombre = hijo['descripcion']
             insertar_organo({
                 'id': hijo_id,
                 'nombre': hijo_nombre,
@@ -234,20 +236,22 @@ def procesar_locales():
         provincias = []
 
     for provincia in provincias:
-        nombre_prov = normalizar_nombre(provincia['descripcion'])
+        nombre_prov = provincia['descripcion']
+        nombre_prov_norm = normalizar_texto(nombre_prov)
         id_prov = provincia['id']
         id_prov_alfa = formar_id(TipoOrgano.GEOGRAFICO, id_prov)
         # Buscar la comunidad autónoma (padre) para la provincia
         id_ccaa_alfa = None
         ccaa_nombre = None
         for ccaa, lista_provs in MAPA_PROVINCIAS.items():
-            lista_norm = [normalizar_nombre(p) for p in lista_provs]
-            if nombre_prov in lista_norm:
+            lista_norm = [normalizar_texto(p) for p in lista_provs]
+            if nombre_prov_norm in lista_norm:
                 ccaa_nombre = ccaa
-                ccaa_obj = session.query(Organo).filter(
-                    Organo.tipo == TipoOrgano.GEOGRAFICO,
-                    Organo.nombre == normalizar_nombre(ccaa)
-                ).one_or_none()
+                ccaa_obj = None
+                for posible in session.query(Organo).filter(Organo.tipo == TipoOrgano.GEOGRAFICO):
+                    if normalizar_texto(posible.nombre) == normalizar_texto(ccaa):
+                        ccaa_obj = posible
+                        break
                 if ccaa_obj:
                     id_ccaa_alfa = ccaa_obj.id
                 break
@@ -264,7 +268,7 @@ def procesar_locales():
 
         # --- Inserta municipios (también tipo GEOGRAFICO) ---
         for municipio in provincia.get('children', []):
-            nombre_muni = normalizar_nombre(municipio['descripcion'])
+            nombre_muni = municipio['descripcion']
             id_muni = municipio['id']
             id_muni_alfa = formar_id(TipoOrgano.GEOGRAFICO, id_muni)
             insertar_organo({
@@ -279,7 +283,7 @@ def procesar_locales():
 
             # --- Inserta ayuntamientos (tipo LOCAL) ---
             for ayto in municipio.get('children', []):
-                nombre_ayto = normalizar_nombre(ayto['descripcion'])
+                nombre_ayto = ayto['descripcion']
                 id_ayto = ayto['id']
                 id_ayto_alfa = formar_id(TipoOrgano.LOCAL, id_ayto)
                 insertar_organo({
@@ -330,4 +334,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
