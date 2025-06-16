@@ -110,7 +110,7 @@ def guardar_csv(filas: list[dict], tipo_admin: str, anio: int):
     campos = list(filas[0].keys())
 
     with open(archivo, "w", newline="", encoding="utf-8") as f:
-        escritor = csv.DictWriter(
+       escritor = csv.DictWriter(
             f,
             fieldnames=campos,
             delimiter=";",
