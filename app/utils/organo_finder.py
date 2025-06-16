@@ -1,7 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-
 from db.models import Organo
 from db.enums import TipoOrgano
 
