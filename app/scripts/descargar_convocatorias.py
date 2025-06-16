@@ -65,13 +65,14 @@ def descargar_csv(tipo_admin: str, anio: int) -> list[dict]:
                 logging.warning(f"Contenido vacío o no válido para {tipo_admin}-{anio} página {page}")
                 break
 
-            lector = csv.DictReader(texto.splitlines(), delimiter=";")
+            lector = csv.DictReader(texto.splitlines(), delimiter=",", quotechar='"')
             filas = []
             for fila in lector:
-                fila_limpia = {
-                    clave.strip(): valor.strip('"').strip("'").strip() if isinstance(valor, str) else valor
-                    for clave, valor in fila.items()
-                }
+                fila_limpia = {}
+                for clave, valor in fila.items():
+                    if isinstance(valor, str):
+                        valor = valor.strip().strip('"').strip("'")
+                    fila_limpia[clave.strip()] = valor
                 # Detectar y mover columna MRR al final con nuevo nombre
                 claves = list(fila_limpia.keys())
                 for k in claves:
@@ -107,7 +108,13 @@ def guardar_csv(filas: list[dict], tipo_admin: str, anio: int):
         campos = [c for c in campos if c != 'mmr'] + ['mmr']
 
     with open(archivo, "w", newline="", encoding="utf-8-sig") as f:
-        escritor = csv.DictWriter(f, fieldnames=campos, delimiter=";")
+        escritor = csv.DictWriter(
+            f,
+            fieldnames=campos,
+            delimiter=";",
+            quoting=csv.QUOTE_NONE,
+            escapechar="\\",
+        )
         escritor.writeheader()
         escritor.writerows(filas)
 
