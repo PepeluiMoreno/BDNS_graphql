@@ -2,13 +2,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
-import logging
-from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
 load_dotenv()
-logging.basicConfig(level=logging.INFO)
 
 # Configuración de conexión
 def get_db_url():
@@ -25,10 +22,7 @@ def get_db_url():
             f"{os.getenv('ORACLE_HOST')}:{os.getenv('ORACLE_PORT')}/?service_name={os.getenv('ORACLE_SERVICE')}"
         )
         
-db_url = get_db_url()
-parsed_url = urlparse(db_url)
-masked_url = f"{parsed_url.scheme}://{parsed_url.hostname}:{parsed_url.port}{parsed_url.path}"
-logging.info("Conectando a la base de datos con URL: %s", masked_url)
+print("Conectando a la base de datos con URL:", get_db_url())
 
 # Crear motor de base de datos
 engine = create_engine(

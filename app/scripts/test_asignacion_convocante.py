@@ -2,7 +2,7 @@
 """Genera un log con el tipo de convocatoria y su órgano convocante.
 
 Uso:
-    python -m app.scripts.test_asignacion_convocante 2018
+    python -m scripts.test_asignacion_convocante 2018
 """
 import argparse
 import csv
@@ -12,12 +12,16 @@ from pathlib import Path
 from datetime import datetime
 import sys
 
-from app.db.session import SessionLocal
-from app.db.models import Organo
-from app.utils.organo_finder import (
+from db.session import SessionLocal
+from db.models import Organo
+from utils.organo_finder import (
     encontrar_codigo_convocante,
 )
 from app.scripts.poblar_organos import normalizar_texto
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -116,6 +120,7 @@ def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
                 org_id = encontrar_codigo_convocante(
                     administracion, departamento, organo
                 )
+
                 datos_organo = session.get(Organo, org_id) if org_id else None
 
                 if datos_organo:
@@ -126,6 +131,17 @@ def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
                     log_func = logger.warning
 
                 log_func(
+
+                datos_organo = None
+                if org_id:
+                    datos_organo = session.get(Organo, org_id)
+                if datos_organo:
+                    org_desc = f"{datos_organo.nombre} [{datos_organo.id}]"
+                else:
+                    org_desc = "No encontrado"
+
+                logger.info(
+
                     "Convocatoria %s (%s) -> %s - %s - %s | Órgano: %s",
                     codigo,
                     tipo_desc,
