@@ -1,7 +1,4 @@
 venv/
 logs/
-__pycache__/
 .vcode/
 .env
-**/__pycache__/
-**/*.pyc

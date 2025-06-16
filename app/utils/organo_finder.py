@@ -1,11 +1,13 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.db.models import Organo
+from db.models import Organo
 from db.enums import TipoOrgano
 from typing import Optional
 
+
 from app.db.session import SessionLocal
 from app.scripts.poblar_organos import normalizar_texto
+
 
 def encontrar_codigo_convocante(
     administracion: str,
@@ -71,8 +73,6 @@ def encontrar_codigo_convocante(
         if close_session:
             session.close()
         return cand.id
-
-
 
     # Fallback para órganos locales: Administracion = municipio,
     # Departamento = ayuntamiento, sin nivel2 en el CSV.
