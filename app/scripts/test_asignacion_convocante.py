@@ -10,6 +10,7 @@ import glob
 import logging
 from pathlib import Path
 from datetime import datetime
+import sys
 
 from db.session import SessionLocal
 from db.models import Organo
@@ -17,6 +18,10 @@ from utils.organo_finder import (
     encontrar_codigo_convocante,
     normalize_text,
 )
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 CSV_DIR = Path(__file__).resolve().parent.parent / "csv" / "convocatorias"
 TIPOS = {
@@ -83,7 +88,7 @@ def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
     Abre su propia sesión de base de datos usando :class:`SessionLocal`.
     """
     with SessionLocal() as session:
-        with ruta.open(encoding="latin-1") as f:
+        with ruta.open(encoding="utf-8-sig") as f:
             _ = preprocess_line(f.readline())  # descartar cabecera
             for linea in f:
                 if not linea.strip():
