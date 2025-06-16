@@ -28,7 +28,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 log_filename = LOG_DIR / f'poblar_organos_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARN)
+logger.setLevel(logging.INFO)
 formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
 
 file_handler = logging.FileHandler(log_filename, encoding='utf-8')
@@ -108,7 +108,7 @@ def insertar_organo(organo_dict):
         if conflicto:
             # Limpiar registro existente
             existente_dict = {k: v for k, v in vars(existente).items() if k != '_sa_instance_state'}
-            logger.error(
+            logger.info(
                 f"Conflicto de ID: intento insertar {organo_dict} pero ya existe {existente_dict}"
             )
             nuevo_id = generar_id_unico(session, id_)
@@ -207,6 +207,38 @@ def procesar_estado():
                 'nivel3': hijo_nombre
             })
 
+def procesar_otros():
+    logger.info("Procesando otros órganos ...")
+    resp = requests.get(BASE_URL + "O")
+    resp.raise_for_status()
+    otros = resp.json()
+    id_padre_raiz = formar_id(TipoOrgano.GEOGRAFICO, 0)
+    
+    for otro in otros:
+        otro_id = formar_id(TipoOrgano.OTRO, otro['id'])
+        otro_nombre = otro['descripcion']
+        insertar_organo({
+            'id': otro_id,
+            'nombre': otro_nombre,
+            'id_padre': id_padre_raiz,
+            'tipo': TipoOrgano.OTRO,
+            'nivel1': 'OTROS',
+            'nivel2': otro_nombre,
+            'nivel3': None
+        })
+        for hijo in otro.get("children", []):
+            hijo_id = formar_id(TipoOrgano.OTRO, hijo['id'])
+            hijo_nombre = hijo['descripcion']
+            insertar_organo({
+                'id': hijo_id,
+                'nombre': hijo_nombre,
+                'id_padre': otro_id,
+                'tipo': TipoOrgano.OTRO,
+                'nivel1': 'OTROS',
+                'nivel2': otro_nombre,
+                'nivel3': hijo_nombre
+            })
+            
 def guardar_provincia(id_num, nombre, id_ccaa):
     with open(PROVINCIAS_CSV, "w", newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
@@ -291,9 +323,9 @@ def procesar_locales():
                     'nombre': nombre_ayto,
                     'id_padre': id_muni_alfa,
                     'tipo': TipoOrgano.LOCAL,
-                    'nivel1': ccaa_nombre,
-                    'nivel2': nombre_prov,
-                    'nivel3': nombre_muni
+                    'nivel1': nombre_muni,
+                    'nivel2': nombre_ayto,
+                    'nivel3': None
                 })
 
 def main():
@@ -325,7 +357,10 @@ def main():
         session.commit()
         procesar_locales()
         session.commit()
+        procesar_otros()
+        session.commit()
         logger.info("Poblamiento completado y cambios guardados.")
+        
     except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Error al guardar cambios en la BD: {e}")
@@ -334,4 +369,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
