@@ -10,14 +10,18 @@ import glob
 import logging
 from pathlib import Path
 from datetime import datetime
-from sqlalchemy.orm import Session
+import sys
 
 from app.db.session import SessionLocal
 from app.db.models import Organo
 from app.utils.organo_finder import (
     encontrar_codigo_convocante,
-    normalize_text,
 )
+from app.scripts.poblar_organos import normalizar_texto
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 CSV_DIR = Path(__file__).resolve().parent.parent / "csv" / "convocatorias"
 TIPOS = {
@@ -33,12 +37,23 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 LOG_FILE = LOG_DIR / f"test_asignacion_convocante_{timestamp}.log"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()],
-)
 logger = logging.getLogger("test_asignacion_convocante")
+logger.setLevel(logging.INFO)
+
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+file_handler = logging.FileHandler(LOG_FILE)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.WARNING)
+console_handler.setFormatter(formatter)
+
+if not logger.hasHandlers():
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
 
 def preprocess_line(line: str) -> list[str]:
     """Convierte una línea en una lista de campos.
@@ -50,10 +65,10 @@ def preprocess_line(line: str) -> list[str]:
     line = line.strip()
     if not line:
         return []
-    if line.startswith("\"") and line.endswith("\""):
+    if line.startswith('"') and line.endswith('"'):
         line = line[1:-1]
-    line = line.replace("\"\"", "\"")
-    return next(csv.reader([line], delimiter=",", quotechar="\""))
+    line = line.replace('""', '"')
+    return next(csv.reader([line], delimiter=",", quotechar='"'))
 
 
 def test_busqueda_sin_acentos() -> None:
@@ -70,63 +85,57 @@ def test_busqueda_sin_acentos() -> None:
 
         con_acentos = encontrar_codigo_convocante(admin, dep, org, session=session)
         sin_acentos = encontrar_codigo_convocante(
-            normalize_text(admin),
-            normalize_text(dep) if dep else None,
-            normalize_text(org) if org else None,
+            normalizar_texto(admin),
+            normalizar_texto(dep) if dep else None,
+            normalizar_texto(org) if org else None,
             session=session,
         )
         assert con_acentos == sin_acentos
         print("Prueba sin acentos superada para", con_acentos)
 
-def procesar_archivo(
-    ruta: Path, tipo_desc: str, session: Session | None = None
-) -> None:
+
+def procesar_archivo(ruta: Path, tipo_desc: str) -> None:
     """Procesa un archivo CSV mostrando la asignación de órganos.
 
-    Si no se proporciona una sesión se crea automáticamente usando
-    :class:`SessionLocal` de :mod:`app.db.session`.
+    Abre su propia sesión de base de datos usando :class:`SessionLocal`.
     """
-    close_session = False
-    if session is None:
-        session = SessionLocal()
-        close_session = True
+    with SessionLocal() as session:
+        with ruta.open(encoding="utf-8-sig") as f:
+            _ = preprocess_line(f.readline())  # descartar cabecera
+            for linea in f:
+                if not linea.strip():
+                    continue
+                fila = preprocess_line(linea)
+                if len(fila) < 5:
+                    continue
+                codigo = fila[0].strip()
+                administracion = fila[2].strip()
+                departamento = fila[3].strip()
+                organo = fila[4].strip()
 
-    with ruta.open(encoding="latin-1") as f:
-        _ = preprocess_line(f.readline())  # descartar cabecera
-        for linea in f:
-            if not linea.strip():
-                continue
-            fila = preprocess_line(linea)
-            if len(fila) < 5:
-                continue
-            codigo = fila[0].strip()
-            administracion = fila[2].strip()
-            departamento = fila[3].strip()
-            organo = fila[4].strip()
+                org_id = encontrar_codigo_convocante(
+                    administracion, departamento, organo
+                )
+                datos_organo = session.get(Organo, org_id) if org_id else None
 
-            org_id = encontrar_codigo_convocante(
-                administracion, departamento, organo, session=session
-            )
-            datos_organo = None
-            if org_id:
-                datos_organo = session.get(Organo, org_id)
-            if datos_organo:
-                org_desc = f"{datos_organo.nombre} [{datos_organo.id}]"
-            else:
-                org_desc = "No encontrado"
+                if datos_organo:
+                    org_desc = f"{datos_organo.nombre} [{datos_organo.id}]"
+                    log_func = logger.info
+                else:
+                    org_desc = "No encontrado"
+                    log_func = logger.warning
 
+                log_func(
+                    "Convocatoria %s (%s) - Búsqueda del órgano con "
+                    "nivel1:%s, nivel2:%s, nivel3:%s -> %s",
+                    codigo,
+                    tipo_desc,
+                    administracion,
+                    departamento,
+                    organo,
+                    org_desc,
+                )
 
-            logger.info(
-                "Convocatoria %s (%s) -> %s - %s - %s | Órgano: %s",
-                codigo,
-                tipo_desc,
-                administracion,
-                departamento,
-                organo,
-                org_desc,
-            )
-    if close_session:
-        session.close()
 
 def main():
     parser = argparse.ArgumentParser(description="Generar log de convocantes")
@@ -150,11 +159,10 @@ def main():
         )
         return
 
-    with SessionLocal() as session:
-        for archivo in archivos:
-            prefijo = Path(archivo).stem.split("_")[1]
-            tipo_desc = TIPOS.get(prefijo, "Desconocido")
-            procesar_archivo(Path(archivo), tipo_desc, session)
+    for archivo in archivos:
+        prefijo = Path(archivo).stem.split("_")[1]
+        tipo_desc = TIPOS.get(prefijo, "Desconocido")
+        procesar_archivo(Path(archivo), tipo_desc)
 
 
 if __name__ == "__main__":
