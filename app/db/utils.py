@@ -5,7 +5,7 @@ import unicodedata
 
 def normalizar(texto):
     if not texto:
-        return ""
+        return None
     # Eliminar tildes y pasar a ASCII
     texto = unicodedata.normalize("NFKD", texto).encode("ASCII", "ignore").decode("ASCII")
     texto = texto.upper().strip()

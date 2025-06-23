@@ -29,7 +29,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 log_filename = LOG_DIR / f'poblar_organos_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.WARN)
 formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
 
 file_handler = logging.FileHandler(log_filename, encoding='utf-8')
