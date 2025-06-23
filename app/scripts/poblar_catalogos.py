@@ -26,13 +26,13 @@ def poblar_actividades(session):
         data = r.json()
 
         for item in data:
-            inst = Instrumento(
+            inst = Actividad(
                 id=item['id'],
                 descripcion=item['descripcion']
             )
             session.merge(inst)
         session.commit()
-        logger.info("Acrividades insertadas/actualizadas.")
+        logger.info("Actividades insertadas/actualizadas.")
     except Exception as e:
         logger.exception(f"Error al poblar actividades: {e}")
 
