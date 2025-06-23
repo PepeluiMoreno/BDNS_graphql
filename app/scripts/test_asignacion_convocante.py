@@ -17,7 +17,7 @@ from db.models import Organo
 from utils.organo_finder import (
     encontrar_codigo_convocante,
 )
-from app.scripts.poblar_organos import normalizar_texto
+from app.scripts.poblar_organos import normalizar
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -85,9 +85,9 @@ def test_busqueda_sin_acentos() -> None:
 
         con_acentos = encontrar_codigo_convocante(admin, dep, org, session=session)
         sin_acentos = encontrar_codigo_convocante(
-            normalizar_texto(admin),
-            normalizar_texto(dep) if dep else None,
-            normalizar_texto(org) if org else None,
+            normalizar(admin),
+            normalizar(dep) if dep else None,
+            normalizar(org) if org else None,
             session=session,
         )
         assert con_acentos == sin_acentos

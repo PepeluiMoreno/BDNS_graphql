@@ -69,11 +69,14 @@ class Organo(Base):
     nivel1   = Column(String, nullable=True)
     nivel2   = Column(String, nullable=True)
     nivel3   = Column(String, nullable=True)
+    nivel1_norm   = Column(String, nullable=True)
+    nivel2_norm   = Column(String, nullable=True)
+    nivel3_norm   = Column(String, nullable=True)
 
     padre = relationship("Organo", remote_side=[id], backref="hijos")
 
     __table_args__ = (
-        Index("ix_organo_nivel1_nivel2_nivel3", "nivel1", "nivel2", "nivel3"),
+        Index("ix_organo_nivel1_nivel2_nivel3", "nivel1_norm", "nivel2_norm", "nivel3_norm"),
     )
  
 

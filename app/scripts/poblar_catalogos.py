@@ -1,6 +1,7 @@
 import requests
 import logging
 from db.session import SessionLocal,engine
+from db.utils import normalizar as normalizar
 from db.models import (
     Base, Actividad, Organo, Instrumento, TipoBeneficiario,
     Sector, Region, Finalidad, Objetivo, Reglamento

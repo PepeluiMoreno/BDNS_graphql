@@ -8,6 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import and_
 from db.session import SessionLocal
 from db.models import Organo
+from db.utils import normalizar
 from db.enums import TipoOrgano
 from datetime import datetime
 from sqlalchemy.orm.exc import NoResultFound 
@@ -41,16 +42,7 @@ if not logger.hasHandlers():
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
 
-# ─────────────────────────────────────────────────────────────
-# Normalización de nombres
-# ─────────────────────────────────────────────────────────────
 
-def normalizar_texto(texto: str) -> str:
-    """Devuelve una versión en mayúsculas y sin acentos del texto."""
-    if not texto:
-        return ""
-    texto = unicodedata.normalize("NFKD", texto).encode("ASCII", "ignore").decode("ASCII")
-    return " ".join(texto.upper().strip().split())
 
 # ─────────────────────────────────────────────────────────────
 # Datos base y constantes
@@ -137,10 +129,7 @@ def insertar_geografico(id_num, id_padre, nombre):
         'id_padre': id_padre_,
         'nombre': nombre,
         'tipo': TipoOrgano.GEOGRAFICO,
-        'nivel1': None,
-        'nivel2': None,
-        'nivel3': None,
-    })
+       })
     session.commit()
     logger.info(f"Órgano geográfico insertado: ID='{id_}', nombre='{nombre}'")
     
@@ -171,7 +160,11 @@ def procesar_autonomicas():
                 'tipo': TipoOrgano.AUTONOMICO,
                 'nivel1': comunidad_nombre,
                 'nivel2': hijo_nombre,
-                'nivel3': None
+                'nivel3': None,
+                'nivel1_norm': normalizar(comunidad_nombre),
+                'nivel2_norm': normalizar(hijo_nombre),  
+                'nivel3_norm': None
+
             })
     logger.info("Terminado el proceso de órganos autonómicos...")
     
@@ -192,7 +185,10 @@ def procesar_estado():
             'tipo': TipoOrgano.CENTRAL,
             'nivel1': 'ESTADO',
             'nivel2': min_nombre,
-            'nivel3': None
+            'nivel3': None,
+            'nivel1_norm': 'ESTADO',
+            'nivel2_norm': normalizar(min_nombre),
+            'nivel3_norm': None
         })
         for hijo in ministerio.get("children", []):
             hijo_id = formar_id(TipoOrgano.CENTRAL, hijo['id'])
@@ -204,7 +200,10 @@ def procesar_estado():
                 'tipo': TipoOrgano.CENTRAL,
                 'nivel1': 'ESTADO',
                 'nivel2': min_nombre,
-                'nivel3': hijo_nombre
+                'nivel3': hijo_nombre,
+                'nivel1_norm': 'ESTADO',
+                'nivel2_norm': normalizar(min_nombre),
+                'nivel3_norm': normalizar(hijo_nombre)
             })
 
 def procesar_otros():
@@ -224,7 +223,11 @@ def procesar_otros():
             'tipo': TipoOrgano.OTRO,
             'nivel1': 'OTROS',
             'nivel2': otro_nombre,
-            'nivel3': None
+            'nivel3': None,
+            'nivel1_norm': 'OTROS',
+            'nivel2_norm': normalizar(otro_nombre),   
+            'nivel3_norm': None
+            
         })
         for hijo in otro.get("children", []):
             hijo_id = formar_id(TipoOrgano.OTRO, hijo['id'])
@@ -236,26 +239,12 @@ def procesar_otros():
                 'tipo': TipoOrgano.OTRO,
                 'nivel1': 'OTROS',
                 'nivel2': otro_nombre,
-                'nivel3': hijo_nombre
+                'nivel3': hijo_nombre,
+                'nivel1_norm': 'OTROS',
+                'nivel2_norm': normalizar(otro_nombre),
+                'nivel3_norm': normalizar(hijo_nombre)
             })
             
-def guardar_provincia(id_num, nombre, id_ccaa):
-    with open(PROVINCIAS_CSV, "w", newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow([id_num, nombre, id_ccaa])
-
-def cargar_mapa_provincias():
-    mapa = {}
-    if not PROVINCIAS_CSV.exists():
-        logger.warning("No se encontró el CSV de provincias.")
-        return mapa
-    with open(PROVINCIAS_CSV, newline='', encoding='utf-8') as f:
-        reader = csv.reader(f)
-        for row in reader:
-            provincia_id, _, id_ccaa = row
-            mapa[provincia_id] = id_ccaa
-    return mapa
-
 def procesar_locales():
     logger.info("Procesando órganos locales (provincias, municipios, ayuntamientos)...")
     try:
@@ -269,19 +258,19 @@ def procesar_locales():
 
     for provincia in provincias:
         nombre_prov = provincia['descripcion']
-        nombre_prov_norm = normalizar_texto(nombre_prov)
+        nombre_prov_norm = normalizar(nombre_prov)
         id_prov = provincia['id']
         id_prov_alfa = formar_id(TipoOrgano.GEOGRAFICO, id_prov)
         # Buscar la comunidad autónoma (padre) para la provincia
         id_ccaa_alfa = None
         ccaa_nombre = None
         for ccaa, lista_provs in MAPA_PROVINCIAS.items():
-            lista_norm = [normalizar_texto(p) for p in lista_provs]
+            lista_norm = [normalizar(p) for p in lista_provs]
             if nombre_prov_norm in lista_norm:
                 ccaa_nombre = ccaa
                 ccaa_obj = None
                 for posible in session.query(Organo).filter(Organo.tipo == TipoOrgano.GEOGRAFICO):
-                    if normalizar_texto(posible.nombre) == normalizar_texto(ccaa):
+                    if normalizar(posible.nombre) == normalizar(ccaa):
                         ccaa_obj = posible
                         break
                 if ccaa_obj:
@@ -295,7 +284,10 @@ def procesar_locales():
             'tipo': TipoOrgano.GEOGRAFICO,
             'nivel1': ccaa_nombre,
             'nivel2': nombre_prov,
-            'nivel3': None
+            'nivel3': None,
+            'nivel1_norm': normalizar(ccaa_nombre) if ccaa_nombre else None,
+            'nivel2_norm': nombre_prov_norm,        
+            'nivel3_norm': None
         })
 
         # --- Inserta municipios (también tipo GEOGRAFICO) ---
@@ -310,7 +302,10 @@ def procesar_locales():
                 'tipo': TipoOrgano.GEOGRAFICO,
                 'nivel1': ccaa_nombre,
                 'nivel2': nombre_prov,
-                'nivel3': nombre_muni
+                'nivel3': nombre_muni,
+                'nivel1_norm': normalizar(ccaa_nombre) if ccaa_nombre else None,
+                'nivel2_norm': nombre_prov_norm,
+                'nivel3_norm': normalizar(nombre_muni)
             })
 
             # --- Inserta ayuntamientos (tipo LOCAL) ---
@@ -325,8 +320,12 @@ def procesar_locales():
                     'tipo': TipoOrgano.LOCAL,
                     'nivel1': nombre_muni,
                     'nivel2': nombre_ayto,
-                    'nivel3': None
+                    'nivel3': None,
+                    'nivel1_norm': normalizar(nombre_muni),
+                    'nivel2_norm': normalizar(nombre_ayto),
+                    'nivel3_norm': None
                 })
+
 
 def main():
     logger.info("Inicio del poblamiento de órganos...")
@@ -340,10 +339,7 @@ def main():
                 'id_padre': None,
                 'nombre': "ESTADO",
                 'tipo': TipoOrgano.GEOGRAFICO,
-                'nivel1': None,
-                'nivel2': None,
-                'nivel3': None,
-            })
+                 })
             session.commit()
             logger.info("Nodo raíz geográfico 'G0' insertado correctamente.")
         except SQLAlchemyError as e:

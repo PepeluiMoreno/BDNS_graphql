@@ -7,7 +7,7 @@ from db.enums import TipoOrgano
 from typing import Optional
 
 from app.db.session import SessionLocal
-from app.scripts.poblar_organos import normalizar_texto
+from app.scripts.poblar_organos import normalizar
 
 def encontrar_codigo_convocante(
     administracion: str,
@@ -34,7 +34,7 @@ def encontrar_codigo_convocante(
             session.close()
         return None
 
-    adm_norm = normalizar_texto(administracion)
+    adm_norm = normalizar(administracion)
 
 
     query = session.query(Organo.id).filter(
@@ -42,13 +42,13 @@ def encontrar_codigo_convocante(
     )
 
     if departamento:
-        dep_norm = normalizar_texto(departamento)
+        dep_norm = normalizar(departamento)
         query = query.filter(
             func.upper(func.unaccent(func.trim(Organo.nivel2))) == dep_norm
         )
 
     if organo:
-        org_norm = normalizar_texto(organo)
+        org_norm = normalizar(organo)
         query = query.filter(
             func.upper(func.unaccent(func.trim(Organo.nivel3))) == org_norm
         )

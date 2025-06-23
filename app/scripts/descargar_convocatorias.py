@@ -1,149 +1,186 @@
-import csv
 import os
-import requests
-import time
+import json
 import logging
-from datetime import datetime
+import argparse
 from pathlib import Path
+from datetime import datetime
+import requests
 
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import and_
+import unicodedata
+
+# --- Cargar contexto del proyecto ---
+from db.session import SessionLocal, get_db_url
+from db.models import Convocatoria, Organo
+
+# --- Configuraciones ---
 URL_BASE = "https://www.infosubvenciones.es/bdnstrans/api"
+RUTA_JSONS = Path("json/convocatorias")
 RUTA_LOGS = Path("logs")
-RUTA_DESCARGAS = Path(__file__).resolve().parents[1] / "csv" / "convocatorias"
 RUTA_LOGS.mkdir(parents=True, exist_ok=True)
-RUTA_DESCARGAS.mkdir(parents=True, exist_ok=True)
-PRIMER_EJERCICIO = 2008
+RUTA_JSONS.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
-    filename=RUTA_LOGS / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_descarga.log",
+    filename=RUTA_LOGS / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_poblar_convocatorias.log",
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-def descargar_csv(tipo_admin: str, anio: int) -> list[dict]:
-    """Descarga el CSV de convocatorias desde el endpoint /exportar con paginación."""
-    filas_totales = []
+def normalizar(texto):
+    if texto is None:
+        return None
+    return unicodedata.normalize("NFKD", texto).encode("ASCII", "ignore").decode("utf-8").strip().upper()
+
+def buscar_organo_id(session, nivel1, nivel2, nivel3):
+    n1, n2, n3 = normalizar(nivel1), normalizar(nivel2), normalizar(nivel3)
+    organo = session.query(Organo).filter(
+        and_(
+            Organo.nivel1 == n1,
+            Organo.nivel2 == n2,
+            Organo.nivel3 == n3
+        )
+    ).first()
+    return organo.id if organo else None
+
+def descargar_convocatorias(tipo, anio, session):
+    resultados = []
     page = 0
     page_size = 10000
-    fecha_desde = f"01/01/{anio}"
-    fecha_hasta = f"31/12/{anio}"
+    total_esperado = None
 
     while True:
         params = {
-            "vpd": "GE",
-            "fechaDesde": fecha_desde,
-            "fechaHasta": fecha_hasta,
-            "tipoDoc": "csv",
             "page": page,
             "pageSize": page_size,
-            "tipoAdministracion": tipo_admin,
+            "order": "numeroConvocatoria",
+            "direccion": "asc",
+            "fechaDesde": f"01/01/{anio}",
+            "fechaHasta": f"31/12/{anio}",
+            "tipoAdministracion": tipo
         }
-        url = f"{URL_BASE}/convocatorias/exportar"
-
+        url = f"{URL_BASE}/convocatorias/busqueda"
         try:
-            response = requests.get(url, params=params, timeout=60)
-            status = response.status_code
-
-            if status == 204:
-                print(f"[204] No hay datos para {tipo_admin}-{anio} página {page}")
-                logging.info(f"[204] No hay datos para {tipo_admin}-{anio} página {page}")
-                break
-            elif status != 200:
-                print(f"[{status}] Entrypoint mal formado o error inesperado: {response.url}")
-                logging.warning(f"[{status}] Entrypoint mal formado o error inesperado: {response.url}")
-                break
-
-            content_type = response.headers.get("Content-Type", "")
-            if "text/html" in content_type:
-                print(f"Respuesta HTML inesperada para {tipo_admin}-{anio} página {page}")
-                logging.warning(f"Respuesta HTML inesperada para {tipo_admin}-{anio} página {page}")
-                break
-
-            response.encoding = "latin-1"
-            texto = response.text.strip()
-            if not texto or texto.startswith("<"):
-                print(f"Contenido vacío o no válido para {tipo_admin}-{anio} página {page}")
-                logging.warning(f"Contenido vacío o no válido para {tipo_admin}-{anio} página {page}")
-                break
-
-            lector = csv.DictReader(texto.splitlines(), delimiter=",", quotechar='"')
-            filas = []
-            for fila in lector:
-                fila_limpia = {}
-                for clave, valor in fila.items():
-                    if isinstance(valor, str):
-                        valor = valor.strip().strip('"').strip("'")
-                    fila_limpia[clave.strip()] = valor
-                # Detectar y mover columna MRR al final con nuevo nombre
-                claves = list(fila_limpia.keys())
-                for k in claves:
-                    if "Recuperación" in k or "MRR" in k:
-                        fila_limpia["mmr"] = fila_limpia.pop(k)
-                        break
-                filas.append(fila_limpia)
-
-            if not filas:
-                logging.info(f"CSV vacío para {tipo_admin}-{anio} página {page}")
-                break
-
-            filas_totales.extend(filas)
-            logging.info(f"{len(filas)} convocatorias descargadas para {tipo_admin}-{anio} página {page}")
-
-            if len(filas) < page_size:
+            response = requests.get(url, params=params, timeout=120)
+            response.raise_for_status()
+            data = response.json()
+            contenido = data.get("content", [])
+            for fila in contenido:
+                organo_id = buscar_organo_id(session, fila.get("nivel1"), fila.get("nivel2"), fila.get("nivel3"))
+                fila["organo_id"] = organo_id
+                if organo_id is None:
+                    logging.error(f"Órgano no encontrado: {fila.get('nivel1')} - {fila.get('nivel2')} - {fila.get('nivel3')}")
+            resultados.extend(contenido)
+            if total_esperado is None:
+                total_esperado = data.get("totalElements", 0)
+            print(f"{len(contenido)} convocatorias descargadas para {tipo}-{anio} página {page}")
+            logging.info(f"{len(contenido)} convocatorias descargadas para {tipo}-{anio} página {page}")
+            if data.get("last", True):
                 break
             page += 1
-
         except Exception as e:
-            logging.warning(f"Error al descargar CSV {tipo_admin}-{anio} página {page}: {e}")
+            logging.error(f"Error al descargar {tipo}-{anio} página {page}: {e}")
             break
 
-    return filas_totales
+    if total_esperado is not None and len(resultados) != total_esperado:
+        logging.error(f"Diferencia en totalElements: esperados {total_esperado}, obtenidos {len(resultados)}")
+        print(f"[ERROR] Mismatch: esperados {total_esperado}, obtenidos {len(resultados)}")
 
-def guardar_csv(filas: list[dict], tipo_admin: str, anio: int):
-    if not filas:
-        return
-    archivo = RUTA_DESCARGAS / f"convocatorias_{tipo_admin}_{anio}.csv"
+    archivo = RUTA_JSONS / f"convocatorias_{tipo}_{anio}.json"
+    with open(archivo, "w", encoding="utf-8") as f:
+        json.dump(resultados, f, ensure_ascii=False, indent=2)
 
-    campos = list(filas[0].keys())
-    if 'mmr' in campos:
-        campos = [c for c in campos if c != 'mmr'] + ['mmr']
+    logging.info(f"{len(resultados)} convocatorias descargadas para {tipo}-{anio}")
 
-    with open(archivo, "w", newline="", encoding="utf-8-sig") as f:
-        escritor = csv.DictWriter(
-            f,
-            fieldnames=campos,
-            delimiter=";",
-            quoting=csv.QUOTE_NONE,
-            escapechar="\\",
-        )
-        escritor.writeheader()
-        escritor.writerows(filas)
+def cargar_json_convocatorias(archivo):
+    with open(archivo, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-def procesar_tipo_y_anio(tipo_admin: str, anio: int) -> int:
-    logging.info(f"Procesando {tipo_admin}-{anio}")
-    filas = descargar_csv(tipo_admin, anio)
-    guardar_csv(filas, tipo_admin, anio)
-    cantidad = len(filas)
-    logging.info(f"{cantidad} convocatorias descargadas para {tipo_admin}-{anio}")
-    return cantidad
+def poblar_convocatorias(desde_archivo, session):
+    total = 0
+    exitos = 0
+    fallos = 0
+    actualizaciones = 0
+    datos = cargar_json_convocatorias(desde_archivo)
+
+    for entrada in datos:
+        codigo_bdns = entrada.get("numeroConvocatoria")
+        if not codigo_bdns:
+            continue
+
+        organo_id = entrada.get("organo_id")
+        existente = session.get(Convocatoria, codigo_bdns)
+
+        try:
+            if existente:
+                existente.descripcion = entrada.get("descripcion")
+                existente.descripcion_leng = entrada.get("descripcionLeng")
+                existente.fecha_recepcion = entrada.get("fechaRecepcion")
+                existente.mrr = entrada.get("mrr", False)
+                existente.organo_id = organo_id
+                actualizaciones += 1
+            else:
+                nueva = Convocatoria(
+                    codigo_bdns=codigo_bdns,
+                    descripcion=entrada.get("descripcion"),
+                    descripcion_leng=entrada.get("descripcionLeng"),
+                    fecha_recepcion=entrada.get("fechaRecepcion"),
+                    mrr=entrada.get("mrr", False),
+                    organo_id=organo_id
+                )
+                session.add(nueva)
+                exitos += 1
+
+            session.commit()
+        except IntegrityError as e:
+            session.rollback()
+            logging.error(f"Error al guardar {codigo_bdns}: {e}")
+            fallos += 1
+        except Exception as e:
+            session.rollback()
+            logging.error(f"Error inesperado con {codigo_bdns}: {e}")
+            fallos += 1
+
+        total += 1
+
+    print(f"Convocatorias procesadas: {total}")
+    print(f"Exitosas: {exitos}")
+    print(f"Actualizadas: {actualizaciones}")
+    print(f"Fallidas: {fallos}")
+    logging.info(f"Total: {total}, Exitosas: {exitos}, Actualizadas: {actualizaciones}, Fallidas: {fallos}")
+    return total, exitos, actualizaciones, fallos
 
 def main():
-    tipos_admin = ["C", "A", "L", "O"]
-    anios = range(PRIMER_EJERCICIO, datetime.now().year + 1)
-    inicio = time.time()
+    parser = argparse.ArgumentParser(description="Descargar y poblar la tabla Convocatoria desde JSON por año")
+    parser.add_argument("anio", type=int, help="Año del archivo JSON")
+    args = parser.parse_args()
 
-    total_global = 0
-    for tipo_admin in tipos_admin:
-        for anio in anios:
-            cantidad = procesar_tipo_y_anio(tipo_admin, anio)
-            total_global += cantidad
-            print(f"{cantidad} convocatorias {tipo_admin} en {anio}")
+    session = SessionLocal()
+    total_global, exitos_global, actualizaciones_global, fallos_global = 0, 0, 0, 0
 
-    duracion = time.time() - inicio
-    duracion_str = time.strftime("%H:%M:%S", time.gmtime(duracion))
-    print(f"\nTotal general: {total_global}")
-    print(f"Tiempo total de ejecución: {duracion_str}")
-    logging.info(f"Total general: {total_global}")
-    logging.info(f"Tiempo total de ejecución: {duracion_str}")
+    for tipo in ["C", "A", "L", "O"]:
+        archivo = RUTA_JSONS / f"convocatorias_{tipo}_{args.anio}.json"
+        if not archivo.exists():
+            print(f"Descargando {tipo}-{args.anio}...")
+            descargar_convocatorias(tipo, args.anio, session)
+
+        if archivo.exists():
+            print(f"Procesando {archivo.name}")
+            t, e, a, f = poblar_convocatorias(archivo, session)
+            total_global += t
+            exitos_global += e
+            actualizaciones_global += a
+            fallos_global += f
+        else:
+            print(f"No encontrado: {archivo.name}")
+
+    print("\nResumen total del ejercicio:")
+    print(f"Procesadas: {total_global}")
+    print(f"Exitosas: {exitos_global}")
+    print(f"Actualizadas: {actualizaciones_global}")
+    print(f"Fallidas: {fallos_global}")
+    logging.info(f"Resumen final - Total: {total_global}, Exitosas: {exitos_global}, Actualizadas: {actualizaciones_global}, Fallidas: {fallos_global}")
 
 if __name__ == "__main__":
     main()
+
