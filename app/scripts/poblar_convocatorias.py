@@ -1,25 +1,19 @@
+# poblar_convocatorias.py
+
 import os
 import json
 import logging
 import argparse
 from pathlib import Path
 from datetime import datetime
-from db.utils import normalizar
 import requests
 
-from sqlalchemy.exc import IntegrityError
-import unicodedata
-
-# --- Cargar contexto del proyecto ---
-from db.session import SessionLocal, get_db_url
-from db.models import Convocatoria, Organo
-
-# --- Configuraciones ---
+# --- Configuración de rutas y logging ---
 URL_BASE = "https://www.infosubvenciones.es/bdnstrans/api"
 RUTA_JSONS = Path("json/convocatorias")
 RUTA_LOGS = Path("logs")
-RUTA_LOGS.mkdir(parents=True, exist_ok=True)
 RUTA_JSONS.mkdir(parents=True, exist_ok=True)
+RUTA_LOGS.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
     filename=RUTA_LOGS / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_poblar_convocatorias.log",
@@ -27,17 +21,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-
-def buscar_organo_id(session, nivel1, nivel2, nivel3):
-    n1, n2 = normalizar(nivel1), normalizar(nivel2)
-    if nivel3:
-        n3 = normalizar(nivel3)
-        organo = session.query(Organo).filter_by(nivel1_norm=n1, nivel2_norm=n2, nivel3_norm=n3).first()
-    else:
-        organo = session.query(Organo).filter_by(nivel1_norm=n1, nivel2_norm=n2).first()
-    return organo.id if organo else None
-
-def descargar_convocatorias(tipo, anio, session):
+def descargar_convocatorias(tipo, anio):
     resultados = []
     page = 0
     page_size = 10000
@@ -60,19 +44,13 @@ def descargar_convocatorias(tipo, anio, session):
             data = response.json()
             contenido = data.get("content", [])
 
-            for fila in contenido:
-                organo_id = buscar_organo_id(session, fila.get("nivel1"), fila.get("nivel2"), fila.get("nivel3"))
-                fila["organo_id"] = organo_id
-                if organo_id is None:
-                    logging.error(f"Órgano no encontrado: {fila.get('nivel1')} - {fila.get('nivel2')} - {fila.get('nivel3')}")
-
             resultados.extend(contenido)
 
             if total_esperado is None:
                 total_esperado = data.get("totalElements", 0)
 
             logging.info(f"Página {page} descargada ({len(contenido)} registros) para {tipo}-{anio}")
-            print(f"Página {page}: {len(contenido)} registros para {tipo}-{anio}")
+            print(f"  Página {page}: {len(contenido)} registros")
 
             if len(resultados) >= total_esperado:
                 break
@@ -81,113 +59,44 @@ def descargar_convocatorias(tipo, anio, session):
 
         except Exception as e:
             logging.error(f"Error al descargar {tipo}-{anio} página {page}: {e}")
+            print(f"[ERROR] {tipo}-{anio} página {page}: {e}")
             break
-
-    if total_esperado is not None and len(resultados) != total_esperado:
-        logging.error(f"Diferencia en totalElements: esperados {total_esperado}, obtenidos {len(resultados)}")
-        print(f"[ERROR] Mismatch: esperados {total_esperado}, obtenidos {len(resultados)}")
 
     archivo = RUTA_JSONS / f"convocatorias_{tipo}_{anio}.json"
     with open(archivo, "w", encoding="utf-8") as f:
         json.dump(resultados, f, ensure_ascii=False, indent=2)
 
     logging.info(f"{len(resultados)} convocatorias descargadas para {tipo}-{anio}")
-
-def cargar_json_convocatorias(archivo):
-    with open(archivo, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def poblar_convocatorias(desde_archivo, session):
-    total = 0
-    exitos = 0
-    fallos = 0
-    actualizaciones = 0
-    datos = cargar_json_convocatorias(desde_archivo)
-
-    for entrada in datos:
-        codigo_bdns = entrada.get("numeroConvocatoria")
-        if not codigo_bdns:
-            continue
-
-        organo_id = entrada.get("organo_id")
-        if organo_id is None:
-            logging.error(f"Convocatoria sin órgano válida: {codigo_bdns}")
-            fallos += 1
-            total += 1
-            continue
-
-        existente = session.get(Convocatoria, codigo_bdns)
-
-        try:
-            if existente:
-                existente.descripcion = entrada.get("descripcion")
-                existente.descripcion_leng = entrada.get("descripcionLeng")
-                existente.fecha_recepcion = entrada.get("fechaRecepcion")
-                existente.mrr = entrada.get("mrr", False)
-                existente.organo_id = organo_id
-                actualizaciones += 1
-            else:
-                nueva = Convocatoria(
-                    codigo_bdns=codigo_bdns,
-                    descripcion=entrada.get("descripcion"),
-                    descripcion_leng=entrada.get("descripcionLeng"),
-                    fecha_recepcion=entrada.get("fechaRecepcion"),
-                    mrr=entrada.get("mrr", False),
-                    organo_id=organo_id
-                )
-                session.add(nueva)
-                exitos += 1
-
-            session.commit()
-        except IntegrityError as e:
-            session.rollback()
-            logging.error(f"Error al guardar {codigo_bdns}: {e}")
-            fallos += 1
-        except Exception as e:
-            session.rollback()
-            logging.error(f"Error inesperado con {codigo_bdns}: {e}")
-            fallos += 1
-
-        total += 1
-
-    print(f"Convocatorias procesadas: {total}")
-    print(f"Exitosas: {exitos}")
-    print(f"Actualizadas: {actualizaciones}")
-    print(f"Fallidas: {fallos}")
-    logging.info(f"Total: {total}, Exitosas: {exitos}, Actualizadas: {actualizaciones}, Fallidas: {fallos}")
-    return total, exitos, actualizaciones, fallos
+    print(f"→ Subtotal {tipo}-{anio}: {len(resultados)} convocatorias")
+    return len(resultados)
 
 def main():
-    parser = argparse.ArgumentParser(description="Descargar y poblar la tabla Convocatoria desde JSON por año")
+    parser = argparse.ArgumentParser(description="Descargar JSONs de convocatorias por año")
     parser.add_argument("anio", type=int, help="Año del archivo JSON")
     args = parser.parse_args()
 
-    session = SessionLocal()
-    total_global, exitos_global, actualizaciones_global, fallos_global = 0, 0, 0, 0
+    total_general = 0
+    resumen = {}
+
+    print(f"\n=== Descargando convocatorias del año {args.anio} ===\n")
 
     for tipo in ["C", "A", "L", "O"]:
-        print(f"Descargando {tipo}-{args.anio}...")
-        descargar_convocatorias(tipo, args.anio, session)
+        print(f"Descargando tipo {tipo}...")
+        subtotal = descargar_convocatorias(tipo, args.anio)
+        resumen[tipo] = subtotal
+        total_general += subtotal
 
-        archivo = RUTA_JSONS / f"convocatorias_{tipo}_{args.anio}.json"
-        if archivo.exists():
-            print(f"Procesando {archivo.name}")
-            t, e, a, f = poblar_convocatorias(archivo, session)
-            total_global += t
-            exitos_global += e
-            actualizaciones_global += a
-            fallos_global += f
-        else:
-            print(f"No encontrado: {archivo.name}")
+    print("\n=== RESUMEN ===")
+    for tipo, subtotal in resumen.items():
+        print(f"  {tipo}: {subtotal} convocatorias")
+        logging.info(f"Subtotal {tipo}: {subtotal} convocatorias")
 
-    print("\nResumen total del ejercicio:")
-    print(f"Procesadas: {total_global}")
-    print(f"Exitosas: {exitos_global}")
-    print(f"Actualizadas: {actualizaciones_global}")
-    print(f"Fallidas: {fallos_global}")
-    logging.info(f"Resumen final - Total: {total_global}, Exitosas: {exitos_global}, Actualizadas: {actualizaciones_global}, Fallidas: {fallos_global}")
+    print(f"\n=== TOTAL GENERAL: {total_general} convocatorias ===")
+    logging.info(f"TOTAL GENERAL: {total_general} convocatorias")
 
 if __name__ == "__main__":
     main()
+
+
 
 

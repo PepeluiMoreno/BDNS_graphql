@@ -1,12 +1,21 @@
+# poblar_catalogos.py
 import requests
 import logging
-from db.session import SessionLocal,engine
-from db.utils import normalizar as normalizar
+import csv
+from sqlalchemy.exc import IntegrityError
+from db.session import SessionLocal, engine
+from db.utils import normalizar
 from db.models import (
-    Base, Actividad,  Instrumento, TipoBeneficiario,
-    Sector, Region, Finalidad, Objetivo, Reglamento
+    Base,
+    Finalidad,
+    Instrumento,
+    Objetivo,
+    Region,
+    Reglamento,
+    SectorActividad,
+    SectorProducto,
+    TipoBeneficiario,
 )
-# Añadir la carpeta 'project_root' al sys.path para poder importar 'app'
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[2]))
@@ -18,79 +27,39 @@ logger = logging.getLogger(__name__)
 API_BASE = "https://www.infosubvenciones.es/bdnstrans/api"
 VPD = "GE"
 
-def poblar_actividades(session):
+def poblar_catalogo(session, Model, endpoint, extra_params=None):
     try:
-        url = f"{API_BASE}/actividades"
+        url = f"{API_BASE}/{endpoint}"
+        if extra_params:
+            url += "?" + "&".join([f"{k}={v}" for k, v in extra_params.items()])
         r = requests.get(url)
         r.raise_for_status()
         data = r.json()
 
         for item in data:
-            inst = Actividad(
-                id=item['id'],
-                descripcion=item['descripcion']
+            obj = Model(
+                id=item["id"],
+                descripcion=item["descripcion"],
+                descripcion_norm=normalizar(item["descripcion"]),
             )
-            session.merge(inst)
+            session.merge(obj)
         session.commit()
-        logger.info("Actividades insertadas/actualizadas.")
+        logger.info(f"{Model.__name__} insertados/actualizados.")
     except Exception as e:
-        logger.exception(f"Error al poblar actividades: {e}")
-
-def poblar_instrumentos(session):
-    try:
-        url = f"{API_BASE}/instrumentos"
-        r = requests.get(url)
-        r.raise_for_status()
-        data = r.json()
-
-        for item in data:
-            inst = Instrumento(
-                id=item['id'],
-                descripcion=item['descripcion']
-            )
-            session.merge(inst)
-        session.commit()
-        logger.info("Instrumentos insertados/actualizados.")
-    except Exception as e:
-        logger.exception(f"Error al poblar instrumentos: {e}")
-
-def poblar_tipos_beneficiario(session):
-    try:
-        url = f"{API_BASE}/beneficiarios?vpd={VPD}"
-        r = requests.get(url)
-        r.raise_for_status()
-        data = r.json()
-
-        for item in data:
-            tb = TipoBeneficiario(
-                id=item['id'],
-                descripcion=item['descripcion']
-            )
-            session.merge(tb)
-        session.commit()
-        logger.info("Tipos de beneficiario insertados/actualizados.")
-    except Exception as e:
-        logger.exception(f"Error al poblar tipos de beneficiario: {e}")
-
-def poblar_sectores(session):
-    try:
-        url = f"{API_BASE}/sectores"
-        r = requests.get(url)
-        r.raise_for_status()
-        data = r.json()
-
-        for item in data:
-            sector = Sector(
-                id=item['id'],
-                descripcion=item['descripcion']
-            )
-            session.merge(sector)
-        session.commit()
-        logger.info("Sectores insertados/actualizados.")
-    except Exception as e:
-        logger.exception(f"Error al poblar sectores: {e}")
+        logger.exception(f"Error al poblar {Model.__name__}: {e}")
 
 def poblar_regiones(session):
+    def insertar_region(item, id_padre=None):
+        region = Region(
+            id=item["id"],
+            descripcion=item["descripcion"],
+            descripcion_norm=normalizar(item["descripcion"]),
+            id_padre=id_padre,
+        )
+        session.merge(region)
+        for hijo in item.get("children", []):
+            insertar_region(hijo, id_padre=item["id"])
+
     try:
         url = f"{API_BASE}/regiones"
         r = requests.get(url)
@@ -98,82 +67,67 @@ def poblar_regiones(session):
         data = r.json()
 
         for item in data:
-            region = Region(
-                id=item['id'],
-                descripcion=item['descripcion']
-            )
-            session.merge(region)
+            insertar_region(item)
         session.commit()
         logger.info("Regiones insertadas/actualizadas.")
     except Exception as e:
-        logger.exception(f"Error al poblar regiones: {e}")
+        logger.exception("Error al poblar regiones: %s", e)
 
-def poblar_finalidades(session):
+def poblar_sector_actividad_desde_csv(session, ruta_csv):
     try:
-        url = f"{API_BASE}/finalidades?vpd={VPD}"
-        r = requests.get(url)
-        r.raise_for_status()
-        data = r.json()
+        with open(ruta_csv, encoding="utf-8") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            items = list(reader)
 
-        for item in data:
-            finalidad = Finalidad(
-                id=item['id'],
-                descripcion=item['descripcion']
-            )
-            session.merge(finalidad)
+        nodos = {}
+
+        for row in items:
+            id = row["CODINTEGR"].strip()
+            descripcion = row["TITULO_CNAE2009"].strip()
+            norm = normalizar(descripcion)
+
+            if id not in nodos:
+                nodos[id] = SectorActividad(
+                    id=id,
+                    descripcion=descripcion,
+                    descripcion_norm=norm
+                )
+
+        for id, sector in nodos.items():
+            if len(id) == 1:
+                continue  # Sección (raíz)
+            elif len(id) == 3:
+                sector.id_padre = id[0]  # División → Sección
+            elif len(id) == 4:
+                sector.id_padre = id[:3]  # Grupo → División
+            elif len(id) == 5:
+                sector.id_padre = id[:4]  # Clase → Grupo
+
+        for id, sector in sorted(nodos.items(), key=lambda x: len(x[0])):
+            try:
+                session.add(sector)
+                session.flush()
+            except IntegrityError:
+                session.rollback()
+                logger.warning(f"SectorActividad duplicado ignorado: {id}")
+
         session.commit()
-        logger.info("Finalidades insertadoas/actualizadas.")
+        logger.info("Sectores de actividad insertados desde CSV.")
     except Exception as e:
-        logger.exception(f"Error al poblar finalidades: {e}")
-
-def poblar_objetivos(session):
-    try:
-        url = f"{API_BASE}/objetivos"
-        r = requests.get(url)
-        r.raise_for_status()
-        data = r.json()
-
-        for item in data:
-            objetivo = Objetivo(
-                id=item['id'],
-                descripcion=item['descripcion']
-            )
-            session.merge(objetivo)
-        session.commit()
-        logger.info("Objetivos insertados/actualizados.")
-    except Exception as e:
-        logger.exception(f"Error al poblar objetivos: {e}")
-
-def poblar_reglamentos(session):
-    try:
-        url = f"{API_BASE}/reglamentos"
-        r = requests.get(url)
-        r.raise_for_status()
-        data = r.json()
-
-        for item in data:
-            reglamento = Reglamento(
-                id=item['id'],
-                descripcion=item['descripcion'],
-                autorizacion=item.get('autorizacion')
-            )
-            session.merge(reglamento)
-        session.commit()
-        logger.info("Reglamentos insertados/actualizados.")
-    except Exception as e:
-        logger.exception(f"Error al poblar reglamentos: {e}")
+        logger.exception(f"Error al poblar sectores de actividad desde CSV: {e}")
 
 def main():
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as session:
-        poblar_actividades(session)
-        poblar_instrumentos(session)
-        poblar_tipos_beneficiario(session)
-        poblar_sectores(session)
+        poblar_sector_actividad_desde_csv(session, "data/INE/estructura_cnae2009.csv")
+        poblar_catalogo(session, Instrumento, "instrumentos")
+        poblar_catalogo(session, TipoBeneficiario, "beneficiarios", {"vpd": VPD})
+        poblar_catalogo(session, SectorProducto, "sectores")
         poblar_regiones(session)
-        poblar_finalidades(session)
-        poblar_objetivos(session)
-        poblar_reglamentos(session)
+        poblar_catalogo(session, Finalidad, "finalidades", {"vpd": VPD})
+        poblar_catalogo(session, Objetivo, "objetivos")
+        poblar_catalogo(session, Reglamento, "reglamentos")
 
 if __name__ == "__main__":
     main()
+

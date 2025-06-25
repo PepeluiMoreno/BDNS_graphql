@@ -6,3 +6,6 @@ class TipoOrgano(str, Enum):
     LOCAL = "L"
     CENTRAL = "C"
     OTRO = "O"
+    
+   
+    
