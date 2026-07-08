@@ -9,8 +9,8 @@ import {
   mockConcentracion
 } from './mockData.js';
 
-// Configurar el cliente GraphQL
-const API_URL = import.meta.env.VITE_GRAPHQL_URL || 'http://localhost:8001/graphql';
+// Configurar el cliente GraphQL - Compose URL from environment variables
+const API_URL = `${import.meta.env.VITE_GRAPHQL_PROTOCOL}://${import.meta.env.VITE_GRAPHQL_HOST}:${import.meta.env.VITE_GRAPHQL_PORT}${import.meta.env.VITE_GRAPHQL_PATH}`;
 
 const client = new GraphQLClient(API_URL, {
   headers: {

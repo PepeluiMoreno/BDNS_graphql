@@ -162,7 +162,22 @@ class Query:
         return await conc_resolvers.get_concesiones_por_convocatoria(
             info, convocatoria_id, pagination
         )
-    
+
+    @strawberry.field
+    async def concesiones_para_sync(
+        self,
+        info: strawberry.Info,
+        convocatoria_id: UUID,
+        regimen_tipo: Optional[str] = None
+    ) -> List[Concesion]:
+        """
+        Query optimizado para sincronización incremental.
+        Devuelve todas las concesiones sin paginación, con eager loading.
+        """
+        return await conc_resolvers.get_concesiones_para_sync(
+            info, convocatoria_id, regimen_tipo
+        )
+
     # ============ CATÁLOGOS ============
     @strawberry.field
     async def finalidades(

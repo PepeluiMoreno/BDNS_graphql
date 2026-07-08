@@ -24,6 +24,9 @@ class ConcesionFilterInput:
     solo_ayudas_estado: Optional[bool] = None
     solo_minimis: Optional[bool] = None
 
+    # Para sync: filtrar por tipo de régimen directamente
+    regimen_tipo: Optional[str] = None  # "ordinaria", "minimis", "ayuda_estado"
+
 
 @strawberry.input
 class ConcesionSortInput:

@@ -5,7 +5,7 @@ from sqlalchemy import select, or_, and_, func, desc, asc
 from sqlalchemy.orm import selectinload, joinedload
 import base64
 
-from ...bdns_core.db.models import Beneficiario as BeneficiarioModel, Pseudonimo as PseudonimoModel
+from bdns_core.db.models import Beneficiario as BeneficiarioModel, Pseudonimo as PseudonimoModel
 from ..types.beneficiario import Beneficiario, BeneficiarioConnection, BeneficiarioEdge, PageInfo
 from ..inputs.beneficiario import BeneficiarioFilterInput, BeneficiarioSortInput
 from ..inputs.convocatoria import PaginationInput

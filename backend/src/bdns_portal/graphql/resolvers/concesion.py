@@ -7,10 +7,10 @@ import base64
 
 from bdns_core.db.models import Concesion as ConcesionModel
 from bdns_core.db.models import Beneficiario, Convocatoria, RegimenAyuda
-from types.concesion import Concesion, ConcesionConnection, ConcesionEdge
-from types.convocatoria import PageInfo
-from inputs.concesion import ConcesionFilterInput, ConcesionSortInput
-from inputs.convocatoria import PaginationInput
+from ..types.concesion import Concesion, ConcesionConnection, ConcesionEdge
+from ..types.convocatoria import PageInfo
+from ..inputs.concesion import ConcesionFilterInput, ConcesionSortInput
+from ..inputs.convocatoria import PaginationInput
 
 
 def cursor_to_offset(cursor: Optional[str]) -> int:
@@ -101,7 +101,13 @@ def build_filters(filters: Optional[ConcesionFilterInput]):
         conditions.append(
             ConcesionModel.regimen_ayuda.has(RegimenAyuda.descripcion_norm == "minimis")
         )
-    
+
+    # Filtro directo por tipo de régimen (para sync)
+    if filters.regimen_tipo:
+        conditions.append(
+            ConcesionModel.regimen_ayuda.has(RegimenAyuda.descripcion_norm == filters.regimen_tipo)
+        )
+
     return conditions
 
 
@@ -218,3 +224,52 @@ async def get_concesiones_por_convocatoria(
 ) -> ConcesionConnection:
     filters = ConcesionFilterInput(convocatoria_id=convocatoria_id)
     return await get_concesiones(info, pagination, filters)
+
+
+async def get_concesiones_para_sync(
+    info,
+    convocatoria_id: UUID,
+    regimen_tipo: Optional[str] = None
+) -> List[Concesion]:
+    """
+    Query optimizado para sincronización incremental.
+
+    - Sin paginación (devuelve todas las concesiones)
+    - Eager loading de relaciones (convocatoria, beneficiario, regimen)
+    - Filtrado por tipo de régimen opcional
+    - Ordenado por id_concesion para determinismo
+
+    Args:
+        info: Context de Strawberry
+        convocatoria_id: UUID de convocatoria
+        regimen_tipo: Filtro opcional por tipo (ordinaria, minimis, ayuda_estado)
+
+    Returns:
+        Lista de concesiones con todas las relaciones cargadas
+    """
+    db = info.context["db"]
+
+    # Query con eager loading para evitar N+1
+    query = select(ConcesionModel).options(
+        joinedload(ConcesionModel.beneficiario),
+        joinedload(ConcesionModel.convocatoria),
+        joinedload(ConcesionModel.regimen_ayuda)
+    )
+
+    # Filtros
+    conditions = [ConcesionModel.convocatoria_id == convocatoria_id]
+
+    if regimen_tipo:
+        conditions.append(
+            ConcesionModel.regimen_ayuda.has(RegimenAyuda.descripcion_norm == regimen_tipo)
+        )
+
+    query = query.where(and_(*conditions))
+
+    # Ordenar por id_concesion para determinismo (importante para sync)
+    query = query.order_by(ConcesionModel.id_concesion)
+
+    result = await db.execute(query)
+    concesiones = result.unique().scalars().all()
+
+    return list(concesiones)

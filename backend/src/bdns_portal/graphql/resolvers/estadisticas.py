@@ -9,8 +9,8 @@ from bdns_core.db.models import Organo as OrganoModel
 from bdns_core.db.models import FormaJuridica as FormaJuridicaModel
 from bdns_core.db.models import Region as RegionModel
 from bdns_core.db.models import RegimenAyuda as RegimenAyudaModel
-from types.estadisticas import (
-    EstadisticasConcesiones, 
+from ..types.estadisticas import (
+    EstadisticasConcesiones,
     FiltroEstadisticas,
     EvolucionMensual,
     EstadisticasRegimen,
@@ -18,7 +18,7 @@ from types.estadisticas import (
     TopConvocatoria,
     ComparativaAnual
 )
-from cache.redis_cache import redis_cache
+from ...cache.redis_cache import redis_cache
 
 
 # ============================================================================

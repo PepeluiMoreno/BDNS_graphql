@@ -11,8 +11,6 @@ RUN npm ci
 # Copiar el código del frontend
 COPY frontend/ ./
 
-# Exponer puerto
-EXPOSE 3000
-
+# Puerto configurado via VITE_PORT en docker-compose
 # Ejecutar en modo desarrollo
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

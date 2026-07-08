@@ -2,7 +2,7 @@
 import json
 from typing import Any, Optional
 import redis.asyncio as redis
-from core.config import settings
+from ..core.config import settings
 
 class RedisCache:
     def __init__(self):
